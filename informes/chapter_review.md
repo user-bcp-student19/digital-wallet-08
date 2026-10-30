@@ -4,482 +4,433 @@ VEREDICTO: RECHAZADO
 
 Fecha de la revisión: 2026-10-30. Feature: HU 01 – Onboarding de usuario, billetera digital (Wallet).
 
-Este veredicto es una recomendación técnica basada en revisión estática de las entregas `architect.md`, `backend.md`, `frontend.md` y `testing.md`. La decisión de aceptación sigue siendo de las personas responsables del flujo.
+Este veredicto es una recomendación técnica. La decisión de aceptación sigue en manos de las personas responsables del flujo.
 
-**Estado de la evidencia.** Ninguna entrega aporta resultados de ejecución.
-- `backend.md` declara: "No ejecuté el código ni las pruebas".
-- `frontend.md` declara: "No ejecuté el código ni lo probé contra el backend".
-- `testing.md` marca todo como NO EJECUTADO.
-- Esta revisión tampoco ejecutó nada.
-
-Por eso, en este documento "CUMPLE" significa solo "cumple según lectura del código". No existe ningún resultado verificado.
+**Alcance y estado de la evidencia.** La revisión es documental y no ejecutó nada. Se evaluaron `architect.md`, `backend.md`, `frontend.md` y `testing.md`.
+- `architect.md` es el único informe con contenido de diseño inspeccionable.
+- `backend.md` y `frontend.md` entregan solo listas de archivos y comandos de arranque. No incluyen código, contratos ni resultados de ejecución.
+- `testing.md` marca todo como NO EJECUTADO y cubre solo CA-01.
+- Resultados verificados por ejecución: **ninguno**.
+- Verificado por lectura: la coherencia entre la HU y `architect.md` (valores de límites, estados y reglas de OTP) y la coherencia interna entre `architect.md` y `testing.md`.
+- Todo lo demás es "diseñado" o "declarado", no demostrado.
 
 ---
 
 ## Motivos del veredicto
 
-1. **Topes de CA-05 y CA-13 incorrectos respecto a la HU (contrato incompatible entre entregas).**
-   - `architect.md` §4 fija los valores de la HU: ACTIVE_BASIC S/20 por operación y S/60 diarios (2000 y 6000 céntimos); ACTIVE_FULL recargas S/1,000 diarios, pagos S/500 por operación y S/1,000 diarios.
-   - `backend.md` (`config.py`, `DEFAULT_LIMITS`) usa otros valores y afirma que "la HU no da cifras". Eso es falso.
-   - El frontend muestra esos valores erróneos al usuario como "condiciones de las operaciones" (CA-03).
-   - Detalle en H-01.
+1. **No hay evidencia de ejecución de ningún tipo.**
+   - `testing.md` declara "Ninguna prueba fue ejecutada" y "Resultados observados: ninguno".
+   - `backend.md` y `frontend.md` no aportan salida de `pytest`, de `uvicorn`, ni de `npm start` o build.
+   - No se puede afirmar que algún criterio de aceptación esté cumplido en ejecución (H-01).
 
-2. **CA-01 (validación mientras el usuario escribe) no se cumple en el frontend.**
-   - Nombres y apellidos están dentro de `st.form`, así que solo se validan al pulsar "Continuar".
-   - La disponibilidad de usuario se dispara con `on_change` (Enter o pérdida de foco). El propio texto de ayuda dice "Presiona Enter para validar".
-   - La contraseña se valida solo al pulsar "Crear mi billetera".
-   - Detalle en H-04.
+2. **El backend y el frontend no son revisables.**
+   - `backend.md` y `frontend.md` listan archivos sin contenido.
+   - `backend.md` dice generar desde `architecture.mmd`, `sequence.mmd` y `openapi.yaml`, pero esos artefactos no están en el contexto.
+   - `testing.md` afirma que no se entregó un OpenAPI.
+   - La conformidad de la implementación con CA-01 a CA-13 solo puede inferirse de nombres de archivo (H-02, H-08).
 
-3. **La robustez de la contraseña no está implementada en ningún componente (CA-02).**
-   - `architect.md` supuesto 2 delega la regla al cliente.
-   - `validators.validate_password` y `schemas.py` solo validan longitud de 8 a 64.
-   - No hay alerta de robustez. Ver H-05.
+3. **Cobertura de pruebas de QA limitada a CA-01.**
+   - `testing.md` §8 y P-07: CA-02 a CA-13 no tienen pruebas de QA diseñadas.
+   - Las pruebas Selenium están bloqueadas (`locators.json` con `null`, las pruebas se saltan). Un skip no equivale a una prueba aprobada.
+   - Los escenarios `@wallet` dependen de un servicio externo y de un contrato no confirmado (H-03, H-05).
 
-4. **Autorización inexistente en endpoints sensibles.**
-   - `security.require_bearer` acepta cualquier cadena tras `Bearer`.
-   - Cualquiera que conozca un `accountId` puede leer la cuenta, solicitar y verificar OTP, registrar consentimiento y activar `ACTIVE_FULL`.
-   - El `accountId` viaja además en la URL del frontend (`st.query_params`).
-   - El backend no emite ningún token tras crear la cuenta (pregunta 6 de arquitectura, sin respuesta). Ver H-03.
+4. **La aplicación de topes de CA-05 y CA-13 no está demostrada.**
+   - `architect.md` solo expone `limits` y una Política de Límites "consultada por los flujos de pago y recarga".
+   - Esos flujos no existen en los contratos visibles (pregunta 2 de arquitectura abierta).
+   - Tampoco se define el contador diario, su reinicio en `America/Lima` ni si los topes de `ACTIVE_FULL` son contadores independientes (pregunta 8) (H-04).
 
-5. **CA-10 incompleto.**
-   - No existen controles de retención ni eliminación.
-   - `otps.target` guarda correo y celular en claro.
-   - Los términos no se muestran al usuario y la versión la escribe el propio cliente.
-   - El log de acceso por defecto de uvicorn registra la query de `/usernames/availability` con nombres, apellidos y usuario, lo que contradice "no se registran en logs".
-   - El TC-SEC-01 de `testing.md` no lo detectaría. Ver H-07 y H-08.
+5. **CA-03 depende de un contrato externo sin confirmar.**
+   - `architect.md` §3 y `testing.md` P-02 coinciden en que el contrato de `bcp-wallet-mock` llegó truncado.
+   - Faltan el esquema `Kyc`, el cuerpo de `POST /kyc/verifications` y el contrato completo de `GET /wallets/{wallet_id}`.
+   - Además, queda abierto qué saldo prevalece si el mock devuelve uno distinto de 0 (pregunta 11) (H-05).
 
-6. **CA-03 depende de un contrato externo sin confirmar.**
-   - El contrato de `bcp-wallet-mock` llegó truncado.
-   - El cuerpo del KYC (`first_names`, `paternal_surname`, `maternal_surname`), el campo `wallet_id` y el campo de saldo (`_BALANCE_KEYS` con 6 candidatos, incluidos `balance` y `amount_cents`) son supuestos del adaptador.
-   - Una unidad errónea (soles frente a céntimos) mostraría un saldo incorrecto sin error. Ver H-06.
+6. **Seguridad de acceso sin mecanismo definido.**
+   - `architect.md` §5 supuesto 2 y pregunta 9: no hay token ni login, y los endpoints se identifican solo por `user_id`.
+   - Esto incluye los endpoints de verificación y el que activa `ACTIVE_FULL`. Cualquiera que conozca un `user_id` podría operarlos.
+   - La respuesta 2 de la HU habla de autenticación por usuario y password. El diseño no define ningún endpoint ni verificación de credenciales posterior al registro.
+   - Hace falta una decisión humana documentada (H-06).
 
-7. **Las pruebas de QA no cubren los criterios y son parcialmente incompatibles con el frontend.**
-   - `testing.md` solo diseña CA-01. CA-02 a CA-13 no tienen prueba de QA diseñada.
-   - Las pruebas Selenium observan la red del navegador mediante el log `performance` de Chrome. El frontend es Streamlit y llama a la API desde el servidor, así que esas peticiones no aparecen en ese log.
-   - TC-UI-01, TC-UI-02, TC-UI-04 y TC-INT-01 no pueden observar lo que verifican.
-   - Detalle en H-10 y H-11.
+7. **Puntos de contrato y configuración sin alinear entre entregas.**
+   - Prefijo de ruta: `testing.md` usa `baseUrl=http://localhost:8000/v1`. `architect.md` lista rutas sin `/v1`.
+   - Variables de entorno: `testing.md` usa `APP_ENV` y `WALLET_BASE_URL`. El `.env.example` del backend no se entregó.
+   - Biometría mock: la forma de habilitarla por ambiente (pregunta 10) sigue abierta (H-07, H-08).
 
-8. **Hallazgos adicionales.**
-   - El flag del flujo mock está abierto por defecto (`WALLET_ENV` por defecto `development`).
-   - Una aserción de `tests/test_onboarding_flow.py` probablemente falla.
-   - `main.py` se entregó con un cierre contradictorio.
-   - La contraseña queda en `st.session_state`, a pesar de lo que afirma el README.
-   - Hay un desajuste de puertos (8000 frente a 8080).
-   - Varias decisiones abiertas de arquitectura siguen sin respuesta.
-   - Detalle en H-09 y H-12 a H-17.
+8. **Brechas funcionales sin prueba ni evidencia.**
+   - Robustez de contraseña con alerta en vivo (H-09).
+   - Validación en vivo y momento de inicio de la medición (H-10).
+   - Ausencia de PII y contraseñas en logs y analítica (H-11).
+   - Semántica de OTP ("3 opciones" frente a "cualquier valor se confirma") (H-12).
+   - Persistencia no documentada (H-13).
+   - Diferimientos de CA-10 y CA-11 sin aceptación humana registrada (H-14).
+   - Decisiones de arquitectura abiertas (H-15).
 
-**Lo que sí está sólido según lectura estática** (no verificado por ejecución):
-- Modelo de errores sin eco de valores.
-- Hash scrypt de contraseña.
-- Orden de OTP: 60 s de vigencia, 45 s de reenvío e invalidación de anteriores.
-- Unicidad de correo y celular.
-- Gating del mock por ambiente en la ruta.
-- Adaptador sin reintento de POST y sin propagación de `X-Mock-Latency-Ms`.
-- Seguimiento de sesión con `durationMs` calculado por el servidor.
+9. **Un `chapter_review.md` previo, incluido en el contexto, no corresponde a estas entregas (H-16).**
+   - Describe Streamlit, `wallet-api`, SQLite, `/v1/accounts` y `config.py`. Estos elementos no coinciden con las entregas actuales (FastAPI con `app/`, Angular y rutas `/users`).
+   - No se usó como evidencia.
+
+**Lo sólido por lectura documental** (no verificado por ejecución):
+- `architect.md` traza los 13 CA a componentes y endpoints.
+- Los topes por defecto de `architect.md` coinciden con la HU: BASIC 2000 y 6000 céntimos combinados. FULL: pagos 50000 por operación y 100000 diarios, recargas 100000 diarios, sin tope por operación.
+- Las reglas de OTP coinciden con CA-07 y CA-08: 6 caracteres, 60 s de vigencia, 45 s entre solicitudes, invalidación del OTP previo y aceptación de cualquier código vigente de 6 caracteres.
+- Los datos personales viajan por POST con cuerpo y no por URL.
+- El diseño de `testing.md` para CA-01 es coherente con `architect.md`: rutas `/onboarding/sessions`, `/steps`, `/usernames/availability-checks`, `registration_metrics`, política de contraseña de 10 caracteres y errores sin eco de valores.
 
 ---
 
 ## Matriz de criterios de aceptación
 
-Escala de resultado:
-- **CUMPLE (estático)**: la lectura del código lo cubre, sin verificación.
-- **PARCIAL**: hay cobertura con brechas.
-- **NO CUMPLE**: contradice el criterio.
-- **NO CUBIERTO**: no hay entrega que lo trate.
+Escala de resultado, con el significado exacto de cada valor:
+- **DISEÑADO**: `architect.md` cubre el criterio. No hay evidencia de implementación ni de ejecución.
+- **PARCIAL**: hay diseño o pruebas diseñadas con brechas.
+- **NO CUBIERTO**: falta una parte esencial del criterio en las entregas.
 
-Persistencia: no se entregó un modelo de datos independiente. Se evalúa la persistencia implementada en `backend.md` (`db.py`, SQLite, esquema `SCHEMA` y repositorios). No hay migraciones ni definición de retención.
+Ningún criterio está VERIFICADO por ejecución.
+
+**Persistencia.** No se entregó modelo de datos, esquema ni migraciones.
+- `architect.md` menciona "Persistencia local" (usuarios, sesiones, OTP, estados y configuración de límites).
+- `backend.md` lista `app/repositories/*`.
+- `testing.md` §11.5 afirma que los datos son en memoria.
+- Lo anterior se infiere solo de nombres de archivo y de esa nota (H-13).
+
+**Implementación.** Se cita por nombre de archivo, porque el contenido no se entregó.
 
 ### CA-01 – Inicio y seguimiento
-- **Arquitectura:** Servicio de Seguimiento (`POST /onboarding/sessions` y `/steps`). La validación en vivo se asigna al cliente.
-- **Persistencia:** tabla `onboarding_sessions` (`started_at`, `ended_at`, `duration_ms`, `steps`, `completed`).
-- **Implementación:**
-  - Backend: `session_tracking.py` y `routers/onboarding.py`. El tiempo lo calcula el servidor. `LANDING_VISIBLE` cierra la sesión.
-  - Frontend: `ensure_onboarding_session()` en `render_personal`, `report_step()` y `LANDING_VISIBLE` tras `load_summary()`.
-  - La validación en vivo es parcial: nombres, apellidos y contraseña solo se validan al enviar (H-04).
-- **Pruebas:** Karate TC-API-01 a 14, 20 a 27, 30, 31, 40 y 41 y Selenium TC-UI-01 a 04 y TC-INT-01, todas NO EJECUTADO. Los TC-UI son incompatibles con Streamlit (H-10).
-- **Seguridad:** endpoints de sesión sin autenticación, `sessionId` UUID, sin PII en el modelo.
-- **Resultado:** PARCIAL. CA-01-A, B y C cumplen (estático). CA-01-D no cumple.
-- **Brechas:** H-04, H-10, y G-04/G-07 de `testing.md` (latencia entre visibilidad y llamada; `LANDING_VISIBLE` admitido sin pasos previos).
+- **Arquitectura:** Sesión y Métricas de Onboarding con `POST /onboarding/sessions` y `/steps`. `started_at` lo fija el servidor y la duración se calcula al cierre del registro (respuesta 7). La validación en vivo de formato se asigna al cliente. La disponibilidad se valida contra `POST /usernames/availability-checks`.
+- **Persistencia:** no entregada. `architect.md` indica sesiones persistidas localmente.
+- **Implementación:** backend `session_service.py`, `session_repository.py`, `routers/sessions.py` y `schemas/onboarding.py`. Frontend `onboarding.component.ts` y `form-utils.ts`. Contenido no revisable.
+- **Pruebas:**
+  - Karate KAR-S01 a S14, KAR-U01 a U07 y KAR-M01 a M08.
+  - Selenium UI-01 a UI-05, bloqueadas por `locators.json` en `null`.
+  - INT-01 sin código.
+  - Pytest `tests/test_sessions.py` y `tests/test_usernames.py`, existentes por nombre.
+  - Todo NO EJECUTADO.
+- **Seguridad:** el registro de pasos guarda solo nombres de paso (diseño). KAR-S11 verifica que no se almacene el valor, pero no está ejecutado.
+- **Resultado:** PARCIAL.
+- **Brechas:**
+  - `started_at` se toma al recibir `POST /sessions`, no al hacerse visible la pantalla (P-06). Solo UI-01 lo comprobaría, y está bloqueada.
+  - No hay evidencia del frontend sobre la validación en vivo (H-10).
+  - No hay `GET` de sesión; el estado se verifica de forma indirecta.
 
 ### CA-02 – Datos de registro
-- **Arquitectura:** patrones y longitudes en `CreateAccountRequest`; `GET /usernames/availability`; `409 USERNAME_TAKEN` con sugerencias.
-- **Persistencia:** `users` con `username_key UNIQUE` (minúsculas); `password_hash` scrypt.
-- **Implementación:**
-  - `schemas.py`: nombres máx. 30 con espacios simples, apellidos máx. 20 solo letras, usuario `^(?=.*[A-Za-z])[\x21-\x7E]{1,20}$`, contraseña 8 a 64.
-  - `username.py`: sugerencias alfanuméricas de hasta 20 caracteres.
-  - La robustez de contraseña y su alerta no existen (H-05).
-  - La consulta de disponibilidad envía nombres y apellidos por query string (H-07).
-- **Pruebas:** Karate TC-API-20 a 28, 30 y 31 y pytest `test_username_availability_and_conflict`, NO EJECUTADO. Sin prueba de robustez.
-- **Seguridad:** el modelo de errores no refleja valores. La contraseña no va al KYC ni a logs de aplicación. El log de acceso de uvicorn expone nombres y usuario (H-07). Sin límite de tasa sobre disponibilidad, lo que permite enumerar usuarios.
+- **Arquitectura:** patrones y longitudes en `RegisterUserRequest`. Disponibilidad con sugerencias alfanuméricas (máx. 5, supuesto). Contraseña de mínimo 10 caracteres con letras y números, con símbolos permitidos. Hash de contraseña. La contraseña es `writeOnly` y está excluida de logs.
+- **Persistencia:** no entregada. Unicidad de usuario sin confirmar.
+- **Implementación:** `availability_service.py`, `routers/usernames.py`, `schemas/users.py`, `security.py`, `observability.py`. Contenido no revisable.
+- **Pruebas:**
+  - Karate KAR-U01 a U06, KAR-M04 y M05 (contraseña débil y corta).
+  - KAR-U07 (usuario tomado, `@wallet`).
+  - Sin pruebas de la alerta de robustez en UI ni del 409 con `suggestions` en `POST /users`.
+  - Todo NO EJECUTADO.
+- **Seguridad:** errores sin eco de valores (diseñado y probado en Karate, sin ejecutar). Sin evidencia de ausencia de la contraseña en logs y analítica. No hay límite de tasa en disponibilidad, lo que permite enumerar usuarios.
 - **Resultado:** PARCIAL.
-- **Brechas:** H-04, H-05, H-07 y H-17 (usuario "alfabético" frente a imprimibles ASCII incluyendo dígitos; validar con negocio).
+- **Brechas:** H-09, H-11 y la pregunta 4 de arquitectura (longitud mínima del usuario y símbolos permitidos).
+- **Ambigüedad:** "usuario alfabético con símbolos" frente a las pruebas, que aceptan dígitos (`abcdefghij0123456789`) y rechazan "solo dígitos". Confirmar con negocio.
 
 ### CA-03 – Creación de cuenta básica
-- **Arquitectura:** `POST /accounts` crea el wallet vía `POST /kyc/verifications`; `GET /accounts/{id}` lee el saldo de `GET /wallets/{wallet_id}`.
-- **Persistencia:** `accounts` (`wallet_id UNIQUE`, `status`). El saldo no se replica, lo cual es coherente.
-- **Implementación:**
-  - `onboarding.py` crea la cuenta como `ACTIVE_BASIC`.
-  - La landing saluda por `firstNames` y lista los límites.
-  - Las URLs del adaptador coinciden con las de la HU.
-  - Campos de KYC y saldo supuestos (H-06).
-  - La cuenta queda con valores de límites incorrectos (H-01).
-  - La medición cierra con `LANDING_VISIBLE`, que informa el cliente.
-- **Pruebas:** pytest con `FakeWallet`; Karate TC-API-40 y 41 (`@requires-external`). NO EJECUTADO. Ninguna prueba toca el servicio real.
-- **Seguridad:** la contraseña no se envía al KYC. Se envían nombres y apellidos al mock externo, lo cual es funcionalmente necesario pero debe confirmarse contra el contrato. Riesgo de wallet huérfano (decisión aceptada en arquitectura).
+- **Arquitectura:** `POST /users` más Wallet Gateway hacia `POST /kyc/verifications`. Devuelve `wallet_id`, `ACTIVE_BASIC`, saldo 0, bienvenida por nombre y límites. `GET /users/{id}/wallet` consulta `GET /wallets/{wallet_id}`. Timeouts traducidos a 502 o 504.
+- **Persistencia:** no entregada. Riesgo de wallet huérfana aceptado en arquitectura (supuesto 13).
+- **Implementación:** `user_service.py`, `clients/wallet_gateway.py`, `routers/users.py`, `landing.component.ts`, `limits-card.component.ts`. Existe `tests/test_wallet_gateway.py` (por nombre).
+- **Pruebas:** KAR-M01 a M03 y KAR-S14 (`@wallet`) exigen el servicio externo. NO EJECUTADO. Ninguna prueba de QA cubre el mapeo de errores 502 y 504.
+- **Seguridad:** no se envía la contraseña al Wallet (diseño). Se envían datos personales al mock externo, lo que debe confirmarse contra el contrato.
 - **Resultado:** PARCIAL.
-- **Brechas:** H-01, H-06, H-16 (wallet huérfano).
+- **Brechas:** H-05. Falta saber qué saldo prevalece (pregunta 11). La bienvenida y las condiciones en landing no tienen prueba de UI.
 
 ### CA-04 – Aviso de perfil pendiente
-- **Arquitectura:** `profilePending` y `profilePendingMessage` en `AccountSummary`.
-- **Persistencia:** `profiles` con estados `PENDING_*` por defecto.
-- **Implementación:** `onboarding.get_summary` arma el mensaje; el frontend lo muestra con `st.warning` en `render_summary`.
-- **Pruebas:** pytest asserta `profilePending is True`. No hay prueba del texto ni de la visibilidad en UI. NO EJECUTADO.
+- **Arquitectura:** `profile_pending_notice` en el registro y en el perfil.
+- **Persistencia:** no entregada.
+- **Implementación:** `landing.component.ts` y `profile_service.py` (por nombre).
+- **Pruebas:** ninguna de QA. Posible cobertura en pytest, sin contenido visible.
 - **Seguridad:** sin hallazgos propios.
-- **Resultado:** CUMPLE (estático).
-- **Brechas:** ninguna propia, salvo el acceso por IDOR a la landing (H-03).
+- **Resultado:** DISEÑADO.
+- **Brechas:** no hay evidencia de que la landing muestre el mensaje.
 
 ### CA-05 – Operaciones de `ACTIVE_BASIC`
-- **Arquitectura:** Política de Límites con topes de la HU (S/20 por operación, S/60 diarios) y día en `America/Lima`. Pagos y recargas fuera de alcance de endpoints.
-- **Persistencia:** `daily_usage` existe, pero ningún código escribe en ella (solo `get_daily_usage`).
-- **Implementación:**
-  - `config.py` usa topes distintos a la HU (H-01).
-  - No existen endpoints de pago ni de recarga.
-  - Nada aplica ni consume topes (H-02).
-  - El cálculo del día en `America/Lima` en `get_summary` sí es correcto.
-- **Pruebas:** ninguna valida valores de topes, aplicación ni cambio de día.
+- **Arquitectura:** Política de Límites con 2000 por operación y 6000 diarios combinados, en configuración, zona `America/Lima`. Los valores coinciden con la HU.
+- **Persistencia:** `limits_repository.py` existe por nombre. No se sabe si hay contadores diarios.
+- **Implementación:** `limits_service.py`, `config.py`. Sin endpoints de pago ni recarga en los contratos visibles.
+- **Pruebas:** ninguna de QA valida valores, aplicación ni cambio de día.
 - **Seguridad:** n/a.
-- **Resultado:** NO CUMPLE.
-- **Brechas:** H-01, H-02, H-16 (S/60 combinado o por tipo).
+- **Resultado:** NO CUBIERTO en lo esencial. El criterio exige que la cuenta pueda recibir recargas y realizar pagos con topes. Solo se expone configuración.
+- **Brechas:** H-04. Los valores por defecto de `backend.md` no son verificables (el código no se entregó).
 
 ### CA-06 – Registro complementario
-- **Arquitectura:** `ProfileStatus` con endpoints independientes para correo, celular y biometría, sin orden impuesto.
-- **Persistencia:** `profiles` con `email_status`, `mobile_status` y `biometric_status`.
-- **Implementación:** estados iniciales `PENDING_EMAIL`, `PENDING_MOVIL` y `PENDING_BIOM` conformes. Los estados activos `ACTIVE_MOVIL` y `ACTIVE_BIOM` son supuestos de arquitectura. El frontend ofrece las tres pestañas en cualquier orden.
-- **Pruebas:** pytest verifica los estados iniciales. NO EJECUTADO.
-- **Seguridad:** acceso sin autorización por cuenta (H-03).
-- **Resultado:** CUMPLE (estático), con nombres de estados activos pendientes de confirmar.
-- **Brechas:** H-16.
+- **Arquitectura:** `GET /users/{id}/profile`. Flags C1, C2 y C3 independientes. Estados iniciales `PENDING_EMAIL`, `PENDING_MOVIL` y `PENDING_BIOM`. `ACTIVE_MOVIL` y `ACTIVE_BIOM` son supuestos (pregunta 5).
+- **Persistencia:** no entregada.
+- **Implementación:** `profile_service.py`, `routers/profile.py`, `profile.component.ts`.
+- **Pruebas:** ninguna de QA. Posible cobertura en `tests/test_profile_wallet.py` (por nombre).
+- **Seguridad:** acceso por `user_id` sin autorización (H-06).
+- **Resultado:** DISEÑADO.
+- **Brechas:** nombres de estados activos sin confirmar; falta prueba de orden libre.
 
 ### CA-07 – Validación de correo
-- **Arquitectura:** `POST /email/otp` y `/email/otp/verification`, con OTP mock.
-- **Persistencia:** `otps` (`code_hash` HMAC con pepper, `expires_at`, `state`); `profiles.email UNIQUE`.
-- **Implementación:**
-  - `otp.py`: vigencia 60 s, solicitud cada 45 s (429 con `Retry-After`), invalidación de anteriores.
-  - `profile.py`: formato de correo, unicidad y `ACTIVE_EMAIL`.
-  - El OTP mock se escribe en el log fuera de producción (pregunta 4 de arquitectura resuelta de hecho así).
-- **Pruebas:** pytest `test_email_otp_rules` (probablemente correcto, NO EJECUTADO). Sin Karate ni Selenium para este criterio.
-- **Seguridad:**
-  - `otps.target` guarda el correo en claro y sin purga.
-  - El OTP y el `accountId` van al log fuera de producción (aceptable solo en dev y test, y debe documentarse).
-  - Vulnerable al acceso sin autorización por cuenta (H-03).
-- **Resultado:** CUMPLE (estático), condicionado a H-03 y H-08.
-- **Brechas:** H-03, H-08.
+- **Arquitectura:** `POST /users/{id}/email-verification` y `/confirm`. Cubre formato, unicidad (409), 60 s de vigencia, 45 s entre solicitudes (429), invalidación del OTP previo y paso a `ACTIVE_EMAIL`. OTP mock interno.
+- **Persistencia:** `otp_repository.py` (por nombre). No se conoce el almacenamiento del destino.
+- **Implementación:** `otp_service.py`, `verification_service.py`, `routers/verifications.py`, `otp-verification.component.ts`. Existe `tests/test_verifications.py` (por nombre).
+- **Pruebas:** ninguna de QA. Pytest no ejecutado ni visible.
+- **Seguridad:** el mock acepta cualquier código de 6 caracteres vigente (respuesta 6). Los endpoints no tienen autorización (H-06).
+- **Resultado:** DISEÑADO.
+- **Brechas:** H-12. No hay pruebas de 429, expiración, invalidación ni duplicado.
 
 ### CA-08 – Validación de celular
-- **Arquitectura:** `POST /mobile/otp` y verificación, con prefijo +51 fijo y `^9[0-9]{8}$`.
-- **Persistencia:** `profiles.mobile UNIQUE`; `otps.target` con el número.
-- **Implementación:** `request_mobile_otp` antepone `+51`. La UI muestra el prefijo solo dentro de la etiqueta "Celular (+51)", no como componente fijo.
-- **Pruebas:** pytest `test_mobile_otp_and_biometric_flow` cubre solo el camino feliz. NO EJECUTADO. Sin pruebas de 429, expiración ni duplicado para celular.
+- **Arquitectura:** `POST /users/{id}/mobile-verification` y `/confirm`. Patrón `^9[0-9]{8}$`, prefijo `+51` fijo, mismas reglas de OTP.
+- **Persistencia:** igual que CA-07.
+- **Implementación:** igual que CA-07. El prefijo no editable en la UI no es verificable.
+- **Pruebas:** ninguna de QA.
 - **Seguridad:** igual que CA-07.
-- **Resultado:** CUMPLE (estático), condicionado a H-03 y H-08.
-- **Brechas:** H-03, H-08, cobertura de pruebas (H-11).
+- **Resultado:** DISEÑADO.
+- **Brechas:** H-12, y falta evidencia de que la UI muestre el prefijo como no editable.
 
 ### CA-09 – Alcance de biometría
-- **Arquitectura:** mock solo en dev y test (`404 MOCK_NOT_AVAILABLE` en otros ambientes). CA-11 no implementado.
-- **Persistencia:** `profiles.biometric_status`. No se persiste DNI ni se almacenan fotos o videos.
-- **Implementación:** `BiometricMockService` y `require_mock_enabled`. Solo valida un DNI de 8 dígitos y lo descarta. Pero `WALLET_ENV` tiene por defecto `development`, así que el flujo está abierto si no se configura (H-09).
-- **Pruebas:** pytest `test_biometric_not_available_in_production`. NO EJECUTADO.
-- **Seguridad:** apertura por defecto del mock (H-09).
+- **Arquitectura:** `POST /users/{id}/biometric-verification/mock`, solo dev y test (403 en otros ambientes) mediante feature flag. Sin verificación real.
+- **Persistencia:** no entregada.
+- **Implementación:** `biometric_service.py`, `routers/biometric.py`. Existe `tests/test_biometric.py` (por nombre).
+- **Pruebas:** ninguna de QA.
+- **Seguridad:** el mecanismo del flag por ambiente y su valor por defecto no están definidos (pregunta 10).
 - **Resultado:** PARCIAL.
-- **Brechas:** H-09.
+- **Brechas:** H-07. No está definido qué "inputs" verifica el mock (pregunta 6).
 
 ### CA-10 – Datos personales
-- **Arquitectura:** consentimiento versionado; controles de acceso, protección, retención y eliminación "a nivel de Persistencia".
-- **Persistencia:** tabla `consents`.
-  - No hay retención, purga de `otps`, eliminación de usuario ni cifrado de PII.
-  - La BD por defecto es un archivo local sin controles.
-- **Implementación:**
-  - Consentimiento: `POST /consents`. El frontend muestra un checkbox sin texto ni enlace a términos, y la versión es un campo editable por el usuario (H-08).
-  - Logs: se sanitizan los de aplicación, pero el log de acceso de uvicorn expone la query de disponibilidad (H-07).
-- **Pruebas:** TC-SEC-01 busca solo `S3cret!pass` y `Zq9!x` en `qa-server.log`; no busca nombres, apellidos, usuario, correo ni celular. NO EJECUTADO.
-- **Seguridad:** controles de acceso insuficientes (H-03); datos de contacto en claro.
-- **Resultado:** NO CUMPLE.
-- **Brechas:** H-03, H-07, H-08.
+- **Arquitectura:** `accepted_terms` en el paso biométrico. Observabilidad con redacción. El mock no recibe fotos ni video. Retención, eliminación y texto y versión de los términos quedan fuera de alcance (respuesta 8).
+- **Persistencia:** no entregada. No hay definición de retención ni eliminación.
+- **Implementación:** `observability.py`, `security.py`. Existe `tests/test_observability.py` (por nombre).
+- **Pruebas:** ninguna de QA sobre PII en logs. Karate solo verifica no eco en respuestas.
+- **Seguridad:** sin evidencia de ausencia de PII y contraseñas en logs ni de ausencia de analítica en el frontend. Controles de acceso débiles (H-06).
+- **Resultado:** PARCIAL.
+- **Brechas:** H-11, H-14 y la pregunta 7 (aceptación de términos en el registro).
 
-### CA-11 – Documentos y video (futura integración)
-- **Arquitectura:** requisitos documentados (2 MB, video de 5 a 10 s y 10 MB, metadatos de 10 min), sin endpoints.
+### CA-11 – Documentos y video para futura integración
+- **Arquitectura:** requisitos registrados en §1 (2 MB por cara, video de 5 a 10 s y 10 MB, aviso de imágenes nítidas, metadatos de los últimos 10 minutos). Sin endpoints, conforme al criterio.
 - **Persistencia:** ninguna, correcto para el alcance.
-- **Implementación:** ninguna. La UI no indica "imágenes nítidas" y no existe artefacto de documentación fuera de `architect.md`.
-- **Pruebas:** ninguna, coherente con el alcance.
+- **Implementación:** ninguna, coherente con el alcance.
+- **Pruebas:** ninguna, coherente.
 - **Seguridad:** n/a.
-- **Resultado:** NO CUBIERTO por diseño ("estos requisitos no implican implementar").
-- **Brechas:** requiere aceptación explícita humana del diferimiento (H-16).
+- **Resultado:** DISEÑADO (documentado y diferido).
+- **Brechas:** la persona responsable debe aceptar por escrito que la documentación en `architect.md` satisface el criterio (H-14).
 
 ### CA-12 – Activación completa simulada
-- **Arquitectura:** `MockBiometricResult` con `ACTIVE_FULL`.
-- **Persistencia:** `activate_biometric` actualiza `profiles` y `accounts.status` en una transacción.
-- **Implementación:**
-  - Exige consentimiento previo y devuelve 409 si ya es FULL.
-  - No exige correo ni celular validados (pregunta 3 de arquitectura abierta).
-  - Los límites devueltos para FULL son incorrectos (H-01).
-- **Pruebas:** pytest comprueba `ACTIVE_FULL`, `ACTIVE_BIOM` y `allowsThirdPartyRecharge`. NO EJECUTADO.
-- **Seguridad:** activación sin autorización por cuenta (H-03).
+- **Arquitectura:** el mock deja `account_status = ACTIVE_FULL` y aplica los límites FULL. No exige correo ni celular validados (respuesta 9).
+- **Persistencia:** no entregada. No se sabe si el cambio de estado es atómico.
+- **Implementación:** `biometric_service.py`, `routers/biometric.py`.
+- **Pruebas:** ninguna de QA.
+- **Seguridad:** cualquiera con el `user_id` podría activar `ACTIVE_FULL` (H-06).
 - **Resultado:** PARCIAL.
-- **Brechas:** H-01, H-03, H-16.
+- **Brechas:** H-04 (el estado habilita "operaciones reales" que no existen), H-06, H-07.
 
 ### CA-13 – Operaciones de `ACTIVE_FULL`
-- **Arquitectura:** recargas hasta S/1,000 diarios; pagos S/500 por operación y S/1,000 diarios (100000 y 50000 céntimos).
-- **Persistencia:** `daily_usage` sin escritura.
-- **Implementación:** `config.py` usa S/5,000 diarios de recarga, S/1,000 por pago y S/3,000 diarios de pago. Sin endpoints ni aplicación de topes.
-- **Pruebas:** ninguna cubre valores de límites ni cambio de día.
+- **Arquitectura:** `SEPARATE`. Pagos 50000 por operación y 100000 diarios. Recargas 100000 diarios sin tope por operación. Admite recargas de terceros (`allows_third_party_recharges: true`).
+- **Persistencia:** igual que CA-05.
+- **Implementación:** igual que CA-05.
+- **Pruebas:** ninguna de QA.
 - **Seguridad:** n/a.
-- **Resultado:** NO CUMPLE.
-- **Brechas:** H-01, H-02.
+- **Resultado:** NO CUBIERTO en lo esencial (igual que CA-05).
+- **Brechas:** H-04. Falta saber si los contadores de pagos y recargas son independientes (pregunta 8).
 
 ---
 
 ## Contratos incompatibles y hallazgos pendientes
 
-### H-01 – Topes de `ACTIVE_BASIC` y `ACTIVE_FULL` incompatibles entre HU, arquitectura y backend (bloqueante)
-- **Evidencia.**
-  - `architect.md` §4 (CA-05, CA-13) y la HU fijan los valores siguientes.
-  - `backend.md` `DEFAULT_LIMITS` usa los de la columna "Backend".
-  - El README del backend dice "la HU no da cifras".
+### H-01 – Sin evidencia de ejecución (bloqueante)
+- **Evidencia:** `testing.md` §13 y §14 (todo NO EJECUTADO). `backend.md` y `frontend.md` no incluyen salidas de ejecución.
+- **Responsable:** Backend, Frontend y QA.
+- **Cambio requerido:** ejecutar las suites, adjuntar resultados reales y actualizar la matriz de trazabilidad de `testing.md` con "resultado observado". No marcar skips como aprobadas.
+- **Verificación:** salidas reales de `pytest`, Karate y Selenium (ver "Pruebas pendientes").
 
-| Estado / concepto | HU y arquitectura | Backend |
-|---|---|---|
-| BASIC, por operación | S/20 (2,000) | recarga 30,000 (S/300); pago 20,000 (S/200) |
-| BASIC, diario | S/60 (6,000) | recarga 60,000 (S/600); pago 40,000 (S/400) |
-| FULL, recarga diaria | S/1,000 (100,000) | 500,000 (S/5,000) |
-| FULL, pago por operación | S/500 (50,000) | 100,000 (S/1,000) |
-| FULL, pago diario | S/1,000 (100,000) | 300,000 (S/3,000) |
-| FULL, recarga por operación | no definido | 200,000 |
+### H-02 – Backend y frontend sin contenido inspeccionable; contratos fuente ausentes (bloqueante)
+- **Evidencia:**
+  - `backend.md` y `frontend.md` solo listan archivos.
+  - `backend.md` cita `architecture.mmd`, `sequence.mmd` y `openapi.yaml`, ausentes en el contexto.
+  - `testing.md` §1 afirma "No se entregó un archivo OpenAPI".
+  - La lista de archivos del backend no incluye un OpenAPI propio.
+- **Responsable:** Backend y Frontend.
+- **Cambio requerido:** entregar el código fuente o su extracto revisable y el `openapi.yaml` o `/openapi.json` generado, junto con los diagramas citados.
+- **Verificación:** contrastar cada CA con el código y contrastar rutas y esquemas de `testing.md` con el contrato.
 
-  El frontend (`render_summary`) muestra esos valores al usuario.
-- **Responsable.** Backend (`config.py`, README). Frontend, solo para validar que muestre lo correcto.
-- **Cambio requerido.**
-  - Alinear `DEFAULT_LIMITS` con la HU.
-  - Dejar en `None` el tope por operación de recarga de FULL, que la HU no define.
-  - Corregir el README.
-  - Añadir prueba que asserte los valores.
-- **Verificación.**
-  - Prueba pytest nueva (no existe, no hay comando propio) sobre `GET /v1/accounts/{id}`. Debe comparar `limits` con los valores de la HU para BASIC y para FULL tras la biometría mock.
-  - Ejecutarla con `pytest -q` desde `wallet-api/`. Resultado pendiente.
+### H-03 – Cobertura de QA limitada a CA-01 y Selenium bloqueado
+- **Evidencia:**
+  - `testing.md` P-07 y §8: CA-02 a CA-13 sin diseño de pruebas.
+  - `locators.json` con valores `null`; las pruebas se saltan (P-01).
+  - INT-01 sin código.
+- **Responsable:** QA, con apoyo de Frontend (selectores `data-testid` estables).
+- **Cambio requerido:** ampliar la cobertura a CA-02 a CA-13. Cubrir como mínimo:
+  - OTP de correo y celular: 429, expiración, invalidación y duplicados.
+  - Estados C1, C2 y C3 en cualquier orden, y `ACTIVE_FULL` mediante el mock.
+  - Topes y cambio de día en Lima.
+  - 409 con `suggestions` en `POST /users`.
+  - Ausencia de PII y contraseñas en logs.
 
-### H-02 – Los topes no se aplican y `daily_usage` nunca se escribe
-- **Evidencia.**
-  - No hay endpoints de pago ni recarga (arquitectura §1, fuera de alcance).
-  - `LimitsPolicy` solo devuelve configuración.
-  - `daily_usage` solo se lee en `AccountRepository.get_daily_usage`.
-  - CA-05 y CA-13 describen operaciones que la cuenta "puede" realizar y un contador que se reinicia por día.
-- **Responsable.** Arquitectura y Producto (decidir alcance); Backend (implementar si aplica).
-- **Cambio requerido.**
-  - Decisión explícita: o se difiere la aplicación a otra HU, con aceptación humana documentada, o se implementa.
-  - Si se implementa: verificación y consumo atómicos por operación y por día de `America/Lima`, para pagos y recargas.
-  - Aclarar si S/60 es un acumulado combinado o por tipo (pregunta 2 de arquitectura).
-- **Verificación.**
-  - Pruebas con reloj falso en 23:59 y 00:00 de Lima y con la operación en el tope.
-  - No se proporcionó comando para estas pruebas, que no existen.
+  Completar `locators.json`.
+- **Verificación:** matriz CA → prueba con resultado observado y reporte adjunto.
 
-### H-03 – Autorización inexistente (acceso a cuentas ajenas, activación FULL por cualquiera)
-- **Evidencia.**
-  - `security.py`: solo exige una cabecera `Bearer <algo>`.
-  - Los endpoints reciben `accountId` por ruta sin comprobar propiedad.
-  - `POST /accounts` no emite token.
-  - El frontend guarda el `accountId` en la URL y trae `dev-token` por defecto.
-  - `architect.md` supuesto 8 y pregunta 6 dejan el mecanismo fuera de alcance, sin respuesta.
-- **Responsable.** Arquitectura (definir el mecanismo mínimo); Backend; Frontend.
-- **Cambio requerido.**
-  - Emitir una credencial ligada a la cuenta al crearla, o validar propiedad de otro modo.
-  - Rechazar con 403 o 404 cuando el token no corresponda a `accountId`.
-  - Aplicar lo mismo al mock biométrico.
-  - Dejar de depender del `accountId` en la URL como credencial implícita.
-  - Si se decide mantener un esquema simulado para esta entrega, documentarlo y obtener aceptación humana explícita del riesgo, porque CA-12 habilita operaciones reales.
-- **Verificación.**
-  - Prueba: token A sobre cuenta B devuelve 403 o 404 en `GET /accounts/{id}`, en OTP, en consentimiento y en biometría mock.
-  - Prueba Karate equivalente. No se proporcionó comando; la prueba no existe.
+### H-04 – Aplicación de topes y contadores no definida (CA-05, CA-12, CA-13)
+- **Evidencia:** `architect.md` §6, preguntas 2 y 8. Solo se exponen `limits`, y no hay contratos de pago ni recarga. No hay prueba de topes.
+- **Responsable:** Producto y Arquitectura (decidir el alcance); Backend (implementar si aplica).
+- **Cambio requerido:** decidir por escrito una de dos opciones.
+  - Diferir la aplicación de topes a otra historia, con aceptación humana explícita del recorte.
+  - Implementarla: verificación y consumo atómico por operación y por día en `America/Lima`, con topes parametrizables.
 
-### H-04 – CA-01-D: la validación en vivo no existe en el frontend
-- **Evidencia.**
-  - `app.py` `render_personal` usa `st.form` y valida solo al enviar.
-  - `render_credentials` valida el usuario con `on_change` (Enter o blur), con ayuda "Presiona Enter para validar".
-  - La contraseña se valida solo en el clic.
-- **Responsable.** Frontend.
-- **Cambio requerido.**
-  - Mostrar el resultado de validación por campo durante la edición. Por ejemplo, sacar los campos del `st.form` y validar en callbacks, o usar un componente que emita eventos por pulsación.
-  - Mostrar feedback de contraseña (longitud y robustez) en vivo.
-  - Si la tecnología impide validar por pulsación, documentar el comportamiento y obtener aceptación humana del criterio.
-- **Verificación.** Prueba de UI que escriba un valor inválido y compruebe el mensaje sin enviar el formulario. Selenium con selectores reales, comando en "Pruebas pendientes". Resultado pendiente.
+  Confirmar si los contadores de pagos y recargas de `ACTIVE_FULL` son independientes.
+- **Verificación:** pruebas con reloj controlado (23:59 y 00:00 de Lima) y topes en el límite. Además, una prueba que compare `limits` con los valores de la HU para BASIC y para FULL tras la biometría mock. No se proporcionó comando; las pruebas no existen.
 
-### H-05 – Robustez de contraseña no implementada
-- **Evidencia.** `architect.md` supuesto 2 ("se evalúa en el cliente"). `validators.validate_password` y `CreateAccountRequest.password` solo validan longitud. CA-02 exige validar robustez y alertar.
-- **Responsable.** Arquitectura (definir la regla); Frontend (indicador y alerta); Backend (decidir si rechaza contraseñas débiles).
-- **Cambio requerido.** Definir la regla de robustez, implementar el indicador y la alerta en vivo, y añadir las pruebas.
-- **Verificación.** Pruebas unitarias de `validators` con contraseñas débiles y fuertes, y prueba de UI. No hay comando entregado.
+### H-05 – Contrato externo del Wallet mock sin confirmar (CA-03)
+- **Evidencia:**
+  - `architect.md` §3 (limitación) y §6 pregunta 1.
+  - `testing.md` P-02: el cuerpo de `POST /kyc/verifications` es un supuesto, y la concatenación `WALLET_BASE_URL` más path no está probada.
+  - Pregunta 11 (saldo que prevalece).
+  - Los escenarios `@wallet` crean wallets sin posibilidad de baja (P-03).
+- **Responsable:** Arquitectura (obtener el contrato completo); Backend (ajustar el adaptador); QA.
+- **Cambio requerido:**
+  - Confirmar el cuerpo del KYC, el campo `wallet_id` y el campo y la unidad del saldo.
+  - Definir qué saldo prevalece.
+  - Probar los mapeos de error (400, 413 y 404 → 502, 404 y 504) en una prueba de QA o confirmar la cobertura de `tests/test_wallet_gateway.py`.
+- **Verificación:** ejecutar `pytest` y los escenarios `@wallet` contra el servicio real o simulado. Estado: PENDIENTE (ver comandos).
 
-### H-06 – Contrato externo `bcp-wallet-mock` sin confirmar
-- **Evidencia.**
-  - `architect.md` §3: el contrato está truncado; faltan los esquemas `Kyc` y `Wallet`.
-  - `wallet_mock.py` supone el cuerpo del KYC, `wallet_id` en la respuesta y varias claves candidatas para el saldo (`_BALANCE_KEYS`).
-  - El README del backend lo reconoce como supuesto.
-- **Responsable.** Arquitectura (obtener el contrato completo); Backend (adaptar el adaptador).
-- **Cambio requerido.**
-  - Fijar los campos exactos del KYC, de `wallet_id` y del saldo, con su unidad.
-  - Reducir `_BALANCE_KEYS` a la clave real.
-  - Eliminar el comportamiento de "adivinar" y fallar de forma explícita ante una forma inesperada.
-- **Verificación.**
-  - Ejecutar contra el servicio real: `WALLET_API_URL=http://localhost:8000 WALLET_OTP_FIXED_CODE=123456 python smoke_test.py` (README del frontend), más Karate TC-API-40 (`@requires-external`).
-  - Ambos pendientes. Cada ejecución crea wallets sin posibilidad de baja (G-09).
+### H-06 – Autenticación y autorización por `user_id` no definidas (CA-06 a CA-08, CA-10, CA-12)
+- **Evidencia:** `architect.md` supuesto 2 y pregunta 9. No hay token ni login. Los endpoints de perfil, OTP y biometría reciben `user_id` en la ruta.
+  - La respuesta 2 de la HU indica autenticación por usuario y password, sin generación de token.
+  - El diseño no incluye una verificación de credenciales.
+- **Responsable:** Arquitectura y Producto (decisión); Backend; Frontend.
+- **Cambio requerido:**
+  - Aclarar si se espera un endpoint de verificación de usuario y password.
+  - Definir un mecanismo mínimo de autorización para los endpoints de perfil, OTP y biometría.
+  - Si se mantiene sin autorización para el MVP, documentar el riesgo y obtener aceptación humana explícita, porque CA-12 habilita operaciones de nivel FULL.
+- **Verificación:** prueba de que un actor sin credencial, o con otra identidad, no pueda operar sobre un `user_id` ajeno. Hoy no existe y no se proporcionó comando.
 
-### H-07 – Datos personales en logs de acceso y TC-SEC-01 insuficiente
-- **Evidencia.**
-  - `routers/onboarding.py` `GET /usernames/availability` recibe `username`, `firstNames`, `paternalSurname` y `maternalSurname` por query string.
-  - El middleware propio registra solo la ruta, pero el comando documentado (`uvicorn app.main:get_app --factory --port ...`) deja activo el log de acceso por defecto, que incluye la query.
-  - `testing.md` §7.2 captura esa salida con `tee qa-server.log`.
-  - §7.6 solo busca `S3cret!pass` y `Zq9!x`.
-- **Responsable.** Backend (diseño del endpoint y arranque); QA (TC-SEC-01).
-- **Cambio requerido.**
-  - Mover los datos personales a POST con cuerpo, o calcular sugerencias sin recibirlos, o desactivar y redactar el log de acceso (por ejemplo `--no-access-log`) y documentarlo.
-  - Ampliar TC-SEC-01 para buscar también nombres, apellidos, usuario, correo y celular sintéticos.
-- **Verificación.**
-  - Tras ejecutar el flujo, `grep -c "Quispe" qa-server.log` y equivalentes para los demás valores sintéticos. El resultado esperado es 0 en todos.
-  - El comando para esos valores no está en `testing.md`.
-  - Pendiente.
+### H-07 – Feature flag del mock biométrico no definido (CA-09, CA-12)
+- **Evidencia:** `architect.md` pregunta 10 (variable de entorno o feature flag). `testing.md` §10 usa `APP_ENV=test`, un nombre no confirmado contra `.env.example` (no entregado).
+- **Responsable:** Backend.
+- **Cambio requerido:** definir y documentar la variable. El valor por defecto debe dejar el mock cerrado (403) y no deben existir flags de ambiente abiertos por defecto.
+- **Verificación:** arrancar sin la variable y comprobar 403 en `POST /users/{id}/biometric-verification/mock`. Luego arrancar con el ambiente de prueba y comprobar que funciona. Revisar `tests/test_biometric.py` cuando se entregue su contenido.
 
-### H-08 – CA-10: controles de retención y eliminación ausentes; consentimiento débil
-- **Evidencia.**
-  - `db.py`: `otps.target` en claro, sin purga ni retención; no hay eliminación de usuario.
-  - `architect.md` pregunta 8 (plazos y procedimientos) sin respuesta.
-  - Frontend `biometric_section`: checkbox sin texto de términos; la "Versión de términos" es un `text_input` editable.
-  - `ConsentService` acepta cualquier versión.
-- **Responsable.** Arquitectura (retención, términos); Backend; Frontend.
-- **Cambio requerido.**
-  - Definir y documentar plazos de retención.
-  - Implementar purga de OTP vencidos y un mecanismo de eliminación o anonimización.
-  - Mostrar el texto de términos y fijar la versión desde el servidor o la configuración, no desde el usuario.
-  - Considerar guardar solo un hash del destino del OTP.
-- **Verificación.**
-  - Pruebas sobre la purga de OTP vencidos y sobre el rechazo de versiones no vigentes.
-  - Revisión manual de que la UI muestra los términos.
-  - No se proporcionó comando.
+### H-08 – Alineación de contrato y configuración entre entregas
+- **Evidencia:**
+  - `testing.md` usa `baseUrl .../v1`; `architect.md` lista rutas sin `/v1`.
+  - `testing.md` usa `APP_ENV` y `WALLET_BASE_URL`; el `.env.example` no se entregó.
+  - `testing.md` §4 cita una "corrección propuesta mencionada en la entrega del backend" (`StepName`) y nombres de pruebas pytest. Nada de eso aparece en `backend.md`.
+  - El frontend usa `proxy.conf.json` (contenido no entregado).
+- **Responsable:** Backend y QA (Frontend para el proxy).
+- **Cambio requerido:**
+  - Fijar el prefijo de ruta y el puerto.
+  - Publicar las variables de entorno y los puertos en un único lugar (README o `.env.example`).
+  - Reconciliar las referencias de `testing.md` con las entregas reales.
+- **Verificación:** `curl -s http://localhost:8000/openapi.json` y contrastar rutas y prefijos con `testing.md` y `architect.md`. Seguir los README en un entorno limpio.
 
-### H-09 – Flags de ambiente abiertos por defecto
-- **Evidencia.** `Settings.environment` por defecto `development` y `from_env` usa `WALLET_ENV` con ese valor por defecto. El flujo biométrico mock y el log de OTP quedan habilitados si no se configura. `otp_pepper` por defecto `change-me-in-prod` sin validación al arrancar.
-- **Responsable.** Backend.
-- **Cambio requerido.**
-  - Valor por defecto restrictivo (producción).
-  - Fallar al arrancar fuera de dev y test con el pepper por defecto.
-  - Exigir `WALLET_ENV` explícito.
-- **Verificación.** Prueba que arranque sin `WALLET_ENV` y compruebe `404 MOCK_NOT_AVAILABLE`. No hay comando entregado; la prueba existente solo cubre `environment="production"` explícito.
+### H-09 – Robustez de contraseña y alerta en vivo (CA-02, CA-01.d)
+- **Evidencia:**
+  - `architect.md` §5 supuesto 3: mínimo de 10 caracteres con letras y números, con validación en el servidor.
+  - `architect.md` supuesto 4: la validación en vivo de formato es del cliente.
+  - `testing.md`: no hay pruebas de UI sobre contraseña. Solo KAR-M04 y M05 en la API.
+- **Responsable:** Frontend (indicador y alerta); Backend; QA.
+- **Cambio requerido:** implementar y probar la alerta de robustez en vivo según la política definida. Definir qué se considera "robusta" más allá del mínimo.
+- **Verificación:** pruebas unitarias del validador (cliente y servidor) y una prueba UI. No se proporcionó comando.
 
-### H-10 – Selenium incompatible con la arquitectura del frontend Streamlit
-- **Evidencia.**
-  - `testing.md` G-01 declara que no se recibió especificación del frontend.
-  - `NetworkRecorder` usa el log `performance` de Chrome (solo ve peticiones del navegador).
-  - El README del frontend indica que Streamlit llama a la API desde el servidor.
-  - `test_ui_01`, `test_ui_02`, `test_ui_04` y `test_int_01` dependen de ver `POST/GET` hacia la API.
-  - `locators.json` exige selectores y URL aún sin definir; Streamlit no ofrece `data-testid` estables.
-- **Responsable.** QA, con apoyo de Frontend para identificadores estables.
-- **Cambio requerido.**
-  - Rediseñar la verificación de CA-01-A y C: observar el efecto en el backend (por ejemplo, un `GET` de sesión; G-02 pide ese endpoint) o con registro del lado servidor, en lugar de la red del navegador.
-  - Mantener Selenium para validación visible por campo, con selectores reales de Streamlit.
-- **Verificación.** Ejecutar la suite revisada. Resultado pendiente.
+### H-10 – Validación en vivo e inicio de la medición sin evidencia de frontend (CA-01)
+- **Evidencia:**
+  - `testing.md` P-01 y P-06: sin contenido del frontend; no se sabe cuándo se crea la sesión ni cuándo se envía cada paso.
+  - `started_at` es el instante en que el servidor recibe `POST /sessions`.
+  - Las pruebas UI-01 a UI-05 son estructurales y están bloqueadas.
+- **Responsable:** Frontend y QA.
+- **Cambio requerido:** garantizar y documentar que la sesión se crea cuando la pantalla es visible y que cada campo muestra su resultado de validación mientras se escribe. Completar los selectores y los textos esperados.
+- **Verificación:** ejecutar Selenium UI-01 a UI-05 con `locators.json` completo (comando en "Pruebas pendientes"). Los skips no cuentan como aprobados.
 
-### H-11 – Cobertura de pruebas insuficiente y todo sin ejecutar
-- **Evidencia.**
-  - `testing.md` §1 y §9: solo CA-01 diseñado; CA-02 a CA-13 sin diseñar.
-  - Sin prueba para topes, cambio de día en Lima, robustez de contraseña, retención, flujo completo en UI ni seguridad de acceso.
-  - Todas las pruebas figuran como NO EJECUTADO.
-  - Incoherencia de conteo en `testing.md`: la tabla de resumen indica 20 + 3 pruebas Karate y el resumen operativo 24 + 4; la lista real de IDs son 24 sin servicio externo (TC-API-01 a 14, 20 a 27, 30, 31) y 3 con él (28, 40, 41).
-- **Responsable.** QA.
-- **Cambio requerido.**
-  - Ampliar el alcance a CA-02 a CA-13 con trazabilidad, en particular topes, Lima, OTP de celular (429, expiración, duplicado), consentimiento, mock en producción y autorización.
-  - Corregir los conteos.
-  - Adjuntar los resultados reales de ejecución.
-- **Verificación.** Matriz de trazabilidad con resultado observado por prueba y su reporte (`target/karate-reports/karate-summary.html`, `report-ui.xml`, salida de `pytest`).
+### H-11 – PII y contraseñas en logs y analítica sin prueba (CA-02, CA-10)
+- **Evidencia:**
+  - `architect.md`: Observabilidad con redacción.
+  - `backend.md`: existe `tests/test_observability.py` (por nombre).
+  - `testing.md`: no hay prueba de QA sobre logs.
+  - No hay evidencia sobre el frontend (analítica).
+- **Responsable:** Backend, Frontend y QA.
+- **Cambio requerido:**
+  - Añadir una prueba que ejecute el flujo completo con datos sintéticos (nombres, apellidos, usuario, correo, celular, contraseña y OTP) y busque esos valores en los logs del servidor y en la salida del frontend.
+  - Confirmar que el frontend no incluye herramientas de analítica con datos del cliente.
+  - Confirmar que el OTP mock no se registra, o documentarlo si se hace en dev y test.
+- **Verificación:** no se proporcionó comando. Propuesta: arrancar el backend con salida a archivo (`> /tmp/wallet-api.log`) y ejecutar `grep -c "<valor sintético>" /tmp/wallet-api.log`. El resultado esperado es 0 para cada valor.
 
-### H-12 – Aserción probablemente defectuosa en `tests/test_onboarding_flow.py`
-- **Evidencia.**
-  - `assert "short" not in bad.text`.
-  - El manejador devuelve `fields[].rule` con el tipo de Pydantic, previsiblemente `string_too_short`, que contiene "short". `testing.md` §4 ya lo señala.
-- **Responsable.** Backend.
-- **Cambio requerido.** Usar un valor centinela que no coincida con nombres de regla, como hacen las pruebas Karate (`Zq9!x`).
-- **Verificación.** `pytest -q` desde `wallet-api/`. Pendiente.
+### H-12 – Semántica del OTP ambigua y sin pruebas (CA-07, CA-08)
+- **Evidencia:**
+  - Respuesta 5 de la HU ("solo tiene 3 opciones") y respuesta 6 ("con cualquier valor debería confirmarse").
+  - `architect.md` supuesto 6: 3 intentos fallidos, bloqueo con 423, y aceptación de cualquier código de 6 caracteres vigente.
+  - Si cualquier valor confirma, los intentos fallidos solo ocurren con códigos de formato inválido, lo que debe ser una decisión explícita.
+- **Responsable:** Producto y Arquitectura (confirmar); Backend; QA.
+- **Cambio requerido:** confirmar la interpretación y añadir pruebas de longitud (6 caracteres), vigencia de 60 s, intervalo de 45 s, invalidación del OTP previo y bloqueo tras 3 intentos.
+- **Verificación:** pruebas de API con reloj controlado. No existen y no se proporcionó comando.
 
-### H-13 – La contraseña queda en `st.session_state` (el README del frontend afirma lo contrario)
-- **Evidencia.**
-  - `st.text_input("Contraseña", key="pwd")` y `key="pwd2"` almacenan el valor en `st.session_state`.
-  - `payload["password"] = pwd = ""` solo limpia variables locales.
-  - `reset_flow` las elimina solo si el usuario reinicia el flujo.
-  - El README del frontend dice: "la contraseña nunca se guarda en session_state".
-- **Responsable.** Frontend.
-- **Cambio requerido.** Eliminar `pwd` y `pwd2` de `session_state` tras crear la cuenta (con `pop`) o con `st.form(clear_on_submit=True)`. Corregir la afirmación del README.
-- **Verificación.** Inspección del código y prueba que compruebe que `pwd` no existe en `session_state` tras el alta. No se proporcionó comando.
+### H-13 – Persistencia no documentada
+- **Evidencia:**
+  - No hay modelo de datos, esquema ni migraciones.
+  - `architect.md` indica "Persistencia local".
+  - `testing.md` §11.5 indica datos en memoria.
+- **Responsable:** Arquitectura y Backend.
+- **Cambio requerido:** documentar el tipo de almacenamiento.
+  - Unicidad de usuario, correo y celular.
+  - Atomicidad del registro tras crear la wallet.
+  - Qué datos de contacto se guardan en claro.
+  - Consecuencia de la persistencia en memoria (se pierden los contadores y las sesiones al reiniciar).
+- **Verificación:** revisión documental y una prueba de unicidad concurrente. No se proporcionó comando.
 
-### H-14 – `main.py` entregado con cierre contradictorio
-- **Evidencia.** El bloque de `main.py` en `backend.md` termina con `app = create_app() if __name__ != "__main__" and False else None  # placeholder` y una nota que pide sustituir el cierre. El archivo entregado y el corregido son contradictorios.
-- **Responsable.** Backend.
-- **Cambio requerido.** Entregar `main.py` final consolidado, solo con `get_app()`.
-- **Verificación.** `uvicorn app.main:get_app --factory --port 8080` y `curl -i http://localhost:8080/openapi.json`. Pendiente.
+### H-14 – Diferimientos de CA-10 y CA-11 sin aceptación humana registrada
+- **Evidencia:**
+  - Respuesta 8 de la HU: retención, eliminación y texto y versión de los términos quedan fuera de alcance.
+  - `architect.md` §1: CA-11 solo documentado.
+  - Pregunta 7: aceptación de términos solo en el paso biométrico.
+- **Responsable:** Producto (decisión humana).
+- **Cambio requerido:** registrar por escrito que:
+  - CA-10 se acepta sin retención, eliminación ni texto de términos en esta entrega.
+  - La documentación de CA-11 en `architect.md` satisface el criterio.
+  - Se decide si la aceptación de términos también se exige en el registro, ya que ahí se recolectan datos personales.
+- **Verificación:** revisión documental de la decisión.
 
-### H-15 – Puerto y contrato de arranque inconsistentes
-- **Evidencia.** El README del backend arranca en `8080`; el frontend (`DEFAULT_BASE_URL`), `smoke_test.py` y el README del frontend usan `8000`; `testing.md` usa `8080`.
-- **Responsable.** Frontend, Backend y QA (acordar un puerto único).
-- **Cambio requerido.** Unificar el puerto en los tres README y en los valores por defecto, o exigir `WALLET_API_URL` explícito.
-- **Verificación.** Seguir los README literalmente en un entorno limpio. Pendiente.
+### H-15 – Decisiones de arquitectura abiertas
+- **Evidencia:** `architect.md` §6.
+  - Pregunta 3: expiración de la sesión de onboarding y reintento tras un registro fallido.
+  - Pregunta 4: longitud mínima del usuario, símbolos permitidos y número de sugerencias (se asumieron 5).
+  - Pregunta 5: nombres `ACTIVE_MOVIL` y `ACTIVE_BIOM`.
+  - Pregunta 6: inputs que verifica la biometría mock.
+  - Pregunta 11: saldo que prevalece.
 
-### H-16 – Decisiones abiertas de arquitectura sin respuesta
-- **Evidencia.** `architect.md` §5:
-  - S/60 combinado o por tipo (pregunta 2).
-  - `ACTIVE_FULL` con o sin correo y celular validados (pregunta 3).
-  - Entrega del OTP al tester (pregunta 4).
-  - Aceptación del consentimiento y texto (pregunta 5).
-  - Autenticación (pregunta 6).
-  - Endpoints de pago y recarga (pregunta 7).
-  - Retención (pregunta 8).
-  - Wallet huérfano (pregunta 9).
-  - Nombres `ACTIVE_MOVIL` y `ACTIVE_BIOM` (supuesto 4).
-  - Diferimiento de CA-11, incluido el aviso "imágenes nítidas".
-- **Responsable.** Producto y Arquitectura (decisión humana).
-- **Cambio requerido.** Respuesta escrita a cada punto, con ajuste de las entregas afectadas.
-- **Verificación.** Revisión documental de la respuesta y de los cambios en las entregas.
+  Las preguntas 1, 2, 7, 8, 9 y 10 se cubren en H-05, H-04, H-14, H-04, H-06 y H-07.
+- **Responsable:** Producto y Arquitectura.
+- **Cambio requerido:** respuesta escrita a cada punto y ajuste de las entregas afectadas.
+- **Verificación:** revisión documental y contraste de los cambios en las entregas.
 
-### H-17 – Observaciones menores
-- `DailyUsage.timezone` es `Literal["America/Lima"]`, pero `business_timezone` es configurable. Un valor distinto produciría un 500 al serializar.
-- `Annotated[Username, Query()]` combina `Field(json_schema_extra)` con `Query`. No se validó que arranque ni genere el OpenAPI (G-11).
-- `GET /usernames/availability` y `POST /accounts` sin límite de tasa permiten enumerar usuarios.
-- El criterio "usuario: caracteres alfabéticos" se implementa como "imprimibles ASCII con al menos una letra", lo que admite dígitos. Confirmar con negocio.
-- Los pasos de onboarding no tienen orden obligatorio; `LANDING_VISIBLE` cierra la sesión sin pasos previos (G-07).
-- **Responsable.** Backend (salvo la confirmación de negocio sobre el usuario).
-- **Cambio requerido.** Corregir o documentar cada punto.
-- **Verificación.**
-  - Arranque y `GET /openapi.json`.
-  - Prueba con `business_timezone` distinto (no existe).
-  - Revisión de negocio del criterio de usuario.
+### H-16 – `chapter_review.md` previo incompatible con las entregas actuales
+- **Evidencia:** el documento previo menciona Streamlit, `wallet-api`, `db.py` SQLite, `/v1/accounts` con `accountId`, `config.py DEFAULT_LIMITS` y IDs TC-API/TC-UI. Las entregas actuales usan FastAPI con `app/`, Angular y rutas `/users`, `/onboarding/sessions` y KAR/UI IDs.
+- **Responsable:** persona responsable del flujo y Chapter.
+- **Cambio requerido:** descartar o archivar ese documento como evidencia, o aclarar a qué iteración corresponde. Sus hallazgos no se confirman ni se descartan aquí y se reevaluarán cuando exista el código.
+- **Verificación:** confirmar la trazabilidad entre la versión de las entregas y el documento de revisión que se use.
+
+### H-17 – Calidad de la suite de QA propuesta
+- **Evidencia:** `testing.md` §14: los archivos `.feature` y Python no se validaron sintácticamente.
+  - Algunas aserciones de "no eco" buscan subcadenas como `1234`, que podrían aparecer en un `trace_id`. Riesgo de falsos positivos en KAR-U02b.
+  - `postData` puede no estar disponible en el log de red de Chrome (UI-04 y UI-05 quedarían inconclusas).
+  - El helper de KAR-S06 y la variable no usada `last`.
+  - Las wallets creadas por los `@wallet` no se pueden borrar (P-03).
+- **Responsable:** QA.
+- **Cambio requerido:** validar sintaxis con Karate y Selenium reales, usar valores centinela sin riesgo de colisión, definir una estrategia para wallets de prueba y documentar la versión de Karate (P-04).
+- **Verificación:** primera ejecución real de las suites y revisión del reporte (`qa/karate/target/karate/`, `pytest -v`).
 
 ---
 
 ## Pruebas pendientes
 
-**Estado de ejecución: ninguna prueba ha sido ejecutada** por ninguna entrega ni por esta revisión. Todo lo listado está PENDIENTE y ningún resultado debe considerarse verificado.
+**Estado de ejecución: ninguna prueba ha sido ejecutada** por ninguna entrega ni por esta revisión. Todo lo listado está PENDIENTE y no debe considerarse verificado. Los comandos se toman de `testing.md` y `backend.md` tal como fueron propuestos, sin validarlos.
 
-| Prueba / verificación | Comando disponible | Estado |
+| Prueba o verificación | Comando disponible | Estado |
 |---|---|---|
-| Pruebas del backend (`tests/test_onboarding_flow.py`, 5 pruebas) | `cd wallet-api && pip install -r requirements.txt && pytest -q` | PENDIENTE. Se espera fallo en `test_username_availability_and_conflict` por H-12. |
-| Arranque y humo del backend | `WALLET_ENV=test WALLET_DB_PATH=./qa-test.db WALLET_OTP_FIXED_CODE=123456 uvicorn app.main:get_app --factory --port 8080 2>&1 \| tee qa-server.log`; luego `curl -s -i -X POST http://localhost:8080/v1/onboarding/sessions` y `curl -s -i "http://localhost:8080/v1/usernames/availability?username=qa.humo"` (`testing.md` §7.2 y §7.3) | PENDIENTE. Resuelve G-11 y H-14. |
-| Karate sin servicio externo (TC-API-01 a 14, 20 a 27, 30, 31) | `cd wallet-api/qa/karate && WALLET_API_BASE_URL=http://localhost:8080 mvn -B test -Dtest=OnboardingRunner -Dkarate.env=test -Dkarate.options="--tags ~@requires-external"` | PENDIENTE |
-| Karate con servicio externo (TC-API-28, 40, 41) | `WALLET_API_BASE_URL=http://localhost:8080 mvn -B test -Dtest=OnboardingRunner -Dkarate.env=test` | PENDIENTE. Crea wallets sin baja posible (G-09). Depende de H-06. |
-| Humo extremo a extremo del frontend contra el backend | `WALLET_API_URL=http://localhost:8000 WALLET_OTP_FIXED_CODE=123456 python smoke_test.py` (ajustar a `8080` si el backend corre allí; H-15) | PENDIENTE |
-| UI Streamlit (flujo manual) | `streamlit run app.py` | PENDIENTE. Solo guía de uso, sin pruebas automáticas. |
-| Selenium (TC-UI-01 a 04, TC-INT-01) | `cd wallet-api/qa/selenium && cp locators.example.json locators.json && API_BASE_URL=http://localhost:8080 HEADLESS=true UI_TIMEOUT_S=10 pytest -v --junitxml=report-ui.xml` | BLOQUEADO. Requiere `locators.json` completo y rediseño (H-10). Una prueba omitida (SKIPPED) no equivale a pasada. |
-| TC-SEC-01 (búsqueda en logs) | `grep -c "S3cret!pass" qa-server.log` y `grep -c "Zq9!x" qa-server.log` | PENDIENTE y insuficiente (H-07). |
-| Búsqueda ampliada de PII en logs | No se proporcionó comando; propuesta: `grep -c` con los valores sintéticos de nombres, apellidos, usuario, correo y celular | PENDIENTE |
-| Pruebas nuevas por H-01, H-02, H-03, H-05, H-08, H-09 y H-13 | No se proporcionó comando; las pruebas no existen. Podrían ejecutarse con `pytest -q` una vez escritas. | PENDIENTE |
-| Cobertura de CA-02 a CA-13 por QA | No se proporcionó comando; no hay pruebas diseñadas (H-11) | PENDIENTE |
+| Pruebas del backend (`tests/test_biometric.py`, `test_observability.py`, `test_profile_wallet.py`, `test_sessions.py`, `test_usernames.py`, `test_users.py`, `test_verifications.py`, `test_wallet_gateway.py`) | `pip install -r requirements.txt` y `pytest` (`backend.md`, `testing.md` §11.4) | PENDIENTE. No ejecutado. |
+| Arranque del backend | `uvicorn app.main:app --reload` (`backend.md`). Variante de QA: `APP_ENV=test WALLET_BASE_URL="https://bcp-wallet-mock.yefri.workers.dev/groups/8" uvicorn app.main:app --port 8000` seguido de `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/openapi.json` (`testing.md` §11.1) | PENDIENTE. Variables no confirmadas (H-07, H-08). |
+| Karate completo | `java -DbaseUrl=http://localhost:8000/v1 -jar "$KARATE_JAR" -o target/karate features` (desde `qa/karate`) | PENDIENTE. Requiere el servicio externo y el JAR (P-04). |
+| Karate sin servicio externo | `java -DbaseUrl=http://localhost:8000/v1 -jar "$KARATE_JAR" -t "~@wallet" -o target/karate features` | PENDIENTE |
+| Karate con servicio externo (`@wallet`) | `java -DbaseUrl=http://localhost:8000/v1 -jar "$KARATE_JAR" -t "@wallet" -o target/karate features` | PENDIENTE. Crea wallets sin baja posible (P-03). Depende de H-05. |
+| Frontend Angular | `npm install` y `npm start` (`frontend.md`) | PENDIENTE. No se aportó salida de build. |
+| Selenium (UI-01 a UI-05) | `pip install -r qa/selenium/requirements-e2e.txt`; con `FRONTEND_URL` y `locators.json` completos, `pytest qa/selenium -v` | BLOQUEADO por P-01. Un skip no equivale a una prueba pasada. |
+| INT-01 (formulario completo UI→API) | No se proporcionó comando; la prueba no tiene código | PENDIENTE |
+| Búsqueda de PII y contraseñas en logs | No se proporcionó comando (propuesta en H-11) | PENDIENTE |
+| Pruebas nuevas de H-04, H-06, H-07, H-09, H-12 y H-13 (topes con cambio de día en Lima, autorización, mock cerrado por defecto, robustez, OTP, unicidad) | No se proporcionó comando; las pruebas no existen | PENDIENTE |
+| Cobertura de QA para CA-02 a CA-13 | No se proporcionó comando; no hay pruebas diseñadas (H-03) | PENDIENTE |
 
 **Condiciones mínimas para reevaluar la solución:**
-- Resolver H-01, H-03, H-04, H-05, H-06, H-07 y H-08.
-- Decidir H-02 y H-16 por escrito.
-- Adjuntar resultados reales de ejecución de pytest, Karate, el humo extremo a extremo y las pruebas de UI revisadas.
+- Entregar el código y los contratos del backend y el frontend (H-02).
+- Adjuntar resultados reales de ejecución: pytest, Karate, Selenium con selectores reales y comprobación de logs (H-01, H-03, H-10, H-11).
+- Resolver o decidir por escrito H-04, H-05, H-06, H-07, H-09, H-12 y H-14.
+- Alinear contratos y configuración (H-08) y resolver o aceptar por escrito las decisiones abiertas de H-13, H-15 y H-16.
 
-La aprobación o aceptación final corresponde a las personas responsables del flujo.
+La aceptación o rechazo final de la entrega corresponde a las personas responsables del flujo.

@@ -1,1222 +1,1102 @@
-# Entrega de pruebas – HU 01 Onboarding Wallet (alcance: CA-01)
+# Entrega de pruebas: HU 01 Onboarding Wallet, alcance CA-01
 
-Este documento contiene los archivos solicitados, completos. No se ejecutó ninguna prueba, servicio ni comando. Todo estado es **NO EJECUTADO**.
+Fecha de elaboración: 2026-10-30. Ninguna prueba fue ejecutada. No hubo acceso a un entorno, un navegador ni al Wallet mock. Todo "resultado" de este documento es **esperado**, derivado de la lectura del código del backend. Los resultados observados están vacíos.
 
-## Estructura propuesta
-
-El proyecto no trae infraestructura de QA. Los archivos nuevos se agregan en `wallet-api/qa/`, sin modificar `app/`.
+Estructura de archivos propuesta, sin tocar `app/`, `tests/` ni `pytest.ini`:
 
 ```
-wallet-api/
-└── qa/
-    ├── testing_report.md
-    ├── karate/
-    │   ├── pom.xml
-    │   └── src/test/
-    │       ├── java/onboarding/OnboardingRunner.java
-    │       └── resources/
-    │           ├── karate-config.js
-    │           └── karate/
-    │               ├── common/start-session.feature
-    │               ├── data/account-valid.json
-    │               └── onboarding/
-    │                   ├── session-lifecycle.feature
-    │                   ├── username-validation.feature
-    │                   ├── account-field-validation.feature
-    │                   └── onboarding-account-integration.feature
-    └── selenium/
-        ├── requirements-qa.txt
-        ├── locators.example.json
-        ├── pytest.ini
-        ├── support.py
-        ├── conftest.py
-        └── test_onboarding_ca01_ui.py
+testing_report.md
+qa/karate/karate-config.js
+qa/karate/features/helpers/start-session.feature
+qa/karate/features/helpers/register-user.feature
+qa/karate/features/onboarding-session.feature
+qa/karate/features/username-validation.feature
+qa/karate/features/registration-metrics.feature
+qa/selenium/requirements-e2e.txt
+qa/selenium/locators.json
+qa/selenium/conftest.py
+qa/selenium/test_ca01_onboarding_ui.py
 ```
+
+Las pruebas Selenium están fuera de `tests/` a propósito. `pytest.ini` define `testpaths = tests`, así que `pytest` no recoge `qa/selenium` salvo que se indique la ruta explícitamente.
 
 ---
 
-# 1. `qa/testing_report.md`
+## 1. `testing_report.md`
 
 ````markdown
-# Testing Report – HU 01 Onboarding de usuario, billetera digital (Wallet)
+# Testing Report — HU 01 Onboarding de usuario billetera digital (Wallet)
 
-Fecha del informe: 2026-10-30
-Alcance de esta entrega: **CA-01 (Inicio y seguimiento)**
-Estado global: **NO EJECUTADO**. No existe salida real de ejecución de ninguna prueba.
+- Fecha: 2026-10-30
+- Alcance de criterios recibido: **solo CA-01** (Inicio y seguimiento).
+- Estado global: **NO EJECUTADO** (no existe salida real de ninguna ejecución).
+- Convención: "Resultado esperado" = derivado del código/especificación. "Resultado observado" = salida real de una ejecución; hoy **vacío** en todas las pruebas.
 
-## 1. Fuentes y alcance
+## 1. Fuentes analizadas
 
-| Fuente | Estado |
-|---|---|
-| Historia de usuario (CA-01 a CA-13 en la descripción) | Recibida |
-| Lista "Criterios de aceptación" de la tarea | Solo contiene CA-01 |
-| Contrato e implementación del backend (FastAPI) | Recibido como código y README. **No** se recibió el OpenAPI generado |
-| Especificación del frontend (pantallas, rutas, selectores, eventos) | **NO RECIBIDA** |
-| Contrato externo `bcp-wallet-mock` (grupo 8) | Recibido truncado (lo indica el propio backend) |
-| Ejecución del backend o de pruebas | **No hay evidencia** (el backend declara "No ejecuté el código ni las pruebas") |
-
-**Decisión de alcance.** Se diseñan pruebas completas para CA-01. CA-02 a CA-13 aparecen en la descripción de la HU, pero no en la lista de criterios a verificar. Solo se tocan de forma auxiliar, y se indica en la matriz:
-
-- La validación por campo del backend (CA-02), porque CA-01 exige mostrar el resultado de la validación mientras se escribe.
-- La creación de cuenta (CA-03), porque el paso `ACCOUNT_CREATED` y el cierre `LANDING_VISIBLE` pertenecen al seguimiento de CA-01.
-
-Los demás criterios quedan **sin diseñar en esta entrega** (sección 8).
-
-## 2. Descomposición de CA-01
-
-| Id | Sub-criterio |
-|---|---|
-| CA-01-A | La medición del tiempo de registro inicia cuando la pantalla de onboarding es visible |
-| CA-01-B | El sistema registra el tiempo (inicio, fin, duración) |
-| CA-01-C | El sistema registra los pasos completados |
-| CA-01-D | Los campos muestran el resultado de su validación mientras el usuario ingresa cada valor |
-
-## 3. Contrato de backend bajo prueba
-
-Se extrajo del código recibido. Todas las rutas van bajo `/v1`.
-
-| Método y ruta | Autenticación | Respuestas esperadas (según código) |
+| Fuente | Disponible | Observación |
 |---|---|---|
-| `POST /v1/onboarding/sessions` | Ninguna (sin `require_bearer`) | 201 `OnboardingSession` |
-| `POST /v1/onboarding/sessions/{sessionId}/steps` | Ninguna | 200 `OnboardingSession`; 400 `INVALID_FIELD`; 404 `NOT_FOUND`; 409 `SESSION_CLOSED` |
-| `GET /v1/usernames/availability` | Ninguna | 200 `UsernameAvailability`; 400 `INVALID_FIELD` |
-| `POST /v1/accounts` (auxiliar) | Ninguna | 201; 400; 409 `USERNAME_TAKEN`; 502/504 (servicio externo) |
+| Historia de usuario HU 01 (CA-01..CA-13) | Sí | Solo CA-01 fue indicado como criterio a verificar. |
+| Especificaciones adicionales (respuestas 1–10) | Sí | Resp. 7: la medición de tiempo termina **al responder el registro**. Resp. 2: sin token, auth fuera de alcance. Resp. 10: idempotencia fuera de alcance. |
+| Código del backend FastAPI (`app/`) y pruebas pytest (`tests/`) | Sí | Contrato inferido del código (routers/schemas). No se entregó un archivo OpenAPI. |
+| Frontend Angular | **Solo lista de archivos** | No hay contenido de componentes, rutas, plantillas ni `proxy.conf.json`. |
+| Contrato del Wallet mock externo (grupo 8) | Solo las URL de la HU | El propio README del backend indica que cuerpo y respuesta de `POST /kyc/verifications` y `GET /wallets/{id}` son supuestos. |
+| Proyecto Karate / Selenium preexistente | **No existe** | No hay `pom.xml`, runner ni suite Selenium. Se propone una estructura mínima en `qa/`. |
 
-Esquemas y reglas:
+## 2. Brechas de información (PENDIENTES)
 
-- `OnboardingSession`: `sessionId` (UUID), `startedAt`, `completedSteps[]`, `completed`, `endedAt` (null mientras esté abierta), `durationMs` (null mientras esté abierta).
-- Pasos permitidos: `PERSONAL_DATA_COMPLETED`, `CREDENTIALS_COMPLETED`, `ACCOUNT_CREATED`, `LANDING_VISIBLE`.
-- `LANDING_VISIBLE` cierra la sesión y calcula `durationMs`. Un paso posterior responde 409.
-- Los pasos repetidos no se duplican.
-- Un `sessionId` malformado en la ruta responde 404 `NOT_FOUND`, no 400 (README, punto 5).
-- El tiempo lo calcula el servidor con su reloj, no el cliente.
-- Errores: `{code, message, fields?, traceId}`. Cabecera `X-Trace-Id` en todas las respuestas.
-- `username`: 1 a 20 caracteres ASCII imprimibles sin espacio, con al menos una letra.
-- `firstNames`: máximo 30 caracteres alfabéticos, con espacios entre palabras.
-- `paternalSurname` y `maternalSurname`: máximo 20 caracteres alfabéticos.
-- `password`: 8 a 64 caracteres.
-
-## 4. Brechas de información y riesgos (pendientes)
-
-| Id | Brecha | Qué se necesita |
-|---|---|---|
-| G-01 | **No hay especificación de frontend.** Se desconocen la URL de la pantalla, los selectores, cómo se representa el resultado de validación y qué acción dispara cada paso. | URL de onboarding, identificadores estables (por ejemplo `data-testid`) y descripción de estados de validación. Con eso se completa `locators.json` |
-| G-02 | No existe `GET` de sesión. El estado solo se lee mutando (registrar paso). | Confirmar si se agregará un endpoint de lectura. Hasta entonces, las comprobaciones usan la respuesta del `POST` |
-| G-03 | Se desconoce qué acción de UI dispara cada paso y si `CREDENTIALS_COMPLETED` y `PERSONAL_DATA_COMPLETED` son pantallas distintas | Flujo de pantallas del frontend |
-| G-04 | "Inicia cuando la pantalla es visible" es del cliente. El servidor mide desde que recibe el `POST`, y la latencia entre visibilidad y llamada no está especificada | Definir la tolerancia aceptable y quién emite el evento |
-| G-05 | No hay endpoint de robustez de contraseña. El único control del backend es la longitud 8–64 | Regla de robustez y dónde se evalúa (probablemente solo frontend) |
-| G-06 | Códigos de error `SESSION_CLOSED` y `NOT_FOUND` figuran como "no listados en el contrato" (README, punto 4) | Confirmar su inclusión en el OpenAPI |
-| G-07 | `LANDING_VISIBLE` puede registrarse sin pasos previos y cierra la sesión (lectura estática del código) | Confirmar si debe exigirse orden de pasos. **No hay prueba** de este comportamiento hasta definirlo |
-| G-08 | El contrato externo está truncado. Las pruebas que crean cuentas dependen de campos supuestos del KYC | Contrato completo de `bcp-wallet-mock` |
-| G-09 | Los wallets creados en el servicio externo no tienen endpoint de baja (README, punto 7) | No se pueden limpiar. Ver sección 7 |
-| G-10 | Las dependencias de QA (Karate, Selenium, Maven, Java) no existen en el proyecto | Confirmar herramientas y versiones. Las propuestas están en `pom.xml` y `requirements-qa.txt` |
-| G-11 | Aviso de verificación de ejecución: no se sabe si el backend arranca. `Annotated[Username, Query()]` combina `Field(json_schema_extra)` y `Query` y no se validó | Ejecutar el humo (sección 6, paso 3) antes del resto |
-
-### Observaciones de revisión estática (no son resultados de ejecución)
-
-1. En `tests/test_onboarding_flow.py` se afirma `assert "short" not in bad.text`. Pydantic v2 suele nombrar la regla de longitud mínima `string_too_short`. El handler devuelve ese valor en `fields[].rule`, así que la aserción podría fallar por una coincidencia de texto, no por un eco de la contraseña. **Por verificar al ejecutar `pytest`.** Las pruebas Karate de este informe usan valores centinela que no coinciden con nombres de reglas.
-2. La versión de `main.py` entregada tenía líneas confusas y el backend las corrigió con un bloque aparte. Verificar que el archivo final tenga solo `get_app()`.
-
-## 5. Matriz de trazabilidad
-
-Estado de todas las filas: **NO EJECUTADO**. Columna "Observado": ninguno.
-
-### 5.1 Pruebas de API (Karate)
-
-| Id prueba | Sub-criterio | Tipo | Archivo / escenario | Resultado esperado | Observado | Estado |
-|---|---|---|---|---|---|---|
-| TC-API-01 | CA-01-A | Positivo, contrato | session-lifecycle: iniciar sesión | 201. Cuerpo exacto: `sessionId` UUID, `startedAt` ISO UTC, `completedSteps` vacío, `completed` false, `endedAt` null, `durationMs` null. Cabecera `X-Trace-Id` presente | — | NO EJECUTADO |
-| TC-API-02 | CA-01-A | Borde | session-lifecycle: dos sesiones | Dos `sessionId` distintos | — | NO EJECUTADO |
-| TC-API-03 | CA-01-A | Contrato (autenticación) | session-lifecycle: sin `Authorization` | 201 sin cabecera de autenticación (según código) | — | NO EJECUTADO |
-| TC-API-04 | CA-01-B | Negativo (integridad) | session-lifecycle: cliente intenta fijar `startedAt` y `completed` | 201. `startedAt` lo fija el servidor, `completed` false, `completedSteps` vacío | — | NO EJECUTADO |
-| TC-API-05 | CA-01-A | Negativo (método) | session-lifecycle: `GET` sobre `/onboarding/sessions` | 405 `METHOD_NOT_ALLOWED` con esquema `Error` | — | NO EJECUTADO |
-| TC-API-06 | CA-01-C | Positivo | session-lifecycle: primer paso | 200. `completedSteps == [PERSONAL_DATA_COMPLETED]`, `completed` false | — | NO EJECUTADO |
-| TC-API-07 | CA-01-C | Positivo, borde | session-lifecycle: acumulación e idempotencia | Pasos en orden de registro, sin duplicar el repetido | — | NO EJECUTADO |
-| TC-API-08 | CA-01-C | Borde | session-lifecycle: aislamiento entre sesiones | Pasos de A no aparecen en B | — | NO EJECUTADO |
-| TC-API-09 | CA-01-B | Positivo | session-lifecycle: cierre con `LANDING_VISIBLE` tras espera de 1,5 s | 200. `completed` true, `endedAt` ISO ≥ `startedAt`, 1500 ≤ `durationMs` < 60000, `durationMs` coherente con `endedAt − startedAt` (±5 ms) | — | NO EJECUTADO |
-| TC-API-10 | CA-01-B/C | Negativo | session-lifecycle: paso en sesión cerrada | 409 `SESSION_CLOSED` (repetir `LANDING_VISIBLE` y paso distinto) | — | NO EJECUTADO |
-| TC-API-11 | CA-01-C | Negativo | session-lifecycle: paso inválido (3 valores) | 400 `INVALID_FIELD`, `fields` con campo `step`. El valor enviado no se refleja | — | NO EJECUTADO |
-| TC-API-12 | CA-01-C | Negativo | session-lifecycle: cuerpo inválido (`{}`, `null`, número) | 400 `INVALID_FIELD`, campo `step` | — | NO EJECUTADO |
-| TC-API-13 | CA-01-C | Negativo | session-lifecycle: sesión inexistente | 404 `NOT_FOUND`. `traceId` del cuerpo igual a `X-Trace-Id` | — | NO EJECUTADO |
-| TC-API-14 | CA-01-C | Negativo | session-lifecycle: `sessionId` malformado | 404 `NOT_FOUND` (README, punto 5) | — | NO EJECUTADO |
-| TC-API-20 | CA-01-D (CA-02) | Positivo | username-validation: usuario libre | 200 exacto `{username, available:true}` sin `suggestions` | — | NO EJECUTADO |
-| TC-API-21 | CA-01-D (CA-02) | Borde | username-validation: 20 caracteres | 200, `available` true | — | NO EJECUTADO |
-| TC-API-22 | CA-01-D (CA-02) | Positivo | username-validation: símbolos `. _ - !` | 200, `available` true | — | NO EJECUTADO |
-| TC-API-23 | CA-01-D (CA-02) | Negativo | username-validation: sin letras, 21 caracteres, con espacio | 400 `INVALID_FIELD`, campo `username` | — | NO EJECUTADO |
-| TC-API-24 | CA-01-D | Negativo | username-validation: falta `username` | 400 `INVALID_FIELD`, campo `username` | — | NO EJECUTADO |
-| TC-API-25 | CA-01-D | Borde | username-validation: `username` vacío | 400 `INVALID_FIELD` (el cliente podría omitir el parámetro vacío; igual debe dar 400) | — | NO EJECUTADO |
-| TC-API-26 | CA-01-D (CA-02) | Negativo | username-validation: nombres opcionales inválidos | 400, el campo correspondiente figura en `fields` | — | NO EJECUTADO |
-| TC-API-27 | CA-01-D (CA-02) | Borde | username-validation: 30 y 20 caracteres válidos | 200 | — | NO EJECUTADO |
-| TC-API-28 | CA-01-D (CA-02) | Integración externa | username-validation: usuario ocupado (@requires-external) | Tras crear cuenta: `available` false, 1 a 3 `suggestions` alfanuméricas ≤20, ninguna igual al usuario. Un segundo alta da 409 `USERNAME_TAKEN` con sugerencias | — | NO EJECUTADO |
-| TC-API-30 | CA-01-D (CA-02) | Negativo | account-field-validation: campo inválido (5 casos) | 400 `INVALID_FIELD`, el campo figura en `fields`, el valor centinela no se refleja | — | NO EJECUTADO |
-| TC-API-31 | CA-01-D | Negativo | account-field-validation: cuerpo vacío | 400, `fields` incluye los 5 campos obligatorios | — | NO EJECUTADO |
-| TC-API-40 | CA-01-B/C (CA-03) | Integración (@requires-external) | onboarding-account-integration | `completedSteps == [PERSONAL_DATA_COMPLETED, ACCOUNT_CREATED, LANDING_VISIBLE]`, `completed` true, `durationMs` ≥ 0. La respuesta de cuenta no contiene contraseña | — | NO EJECUTADO |
-| TC-API-41 | CA-01-C | Borde (@requires-external) | onboarding-account-integration: `onboardingSessionId` inexistente | Cuenta creada (201). El seguimiento es de mejor esfuerzo y no rompe el alta | — | NO EJECUTADO |
-
-### 5.2 Pruebas de interfaz e integración UI+API (Selenium)
-
-Todas exigen `locators.json` completo (G-01).
-
-| Id prueba | Sub-criterio | Tipo | Archivo / función | Resultado esperado | Observado | Estado |
-|---|---|---|---|---|---|---|
-| TC-UI-01 | CA-01-A | Positivo | test_onboarding_ca01_ui: `test_ui_01_*` | Con la pantalla visible, el navegador emite exactamente un `POST …/onboarding/sessions` | — | NO EJECUTADO |
-| TC-UI-02 | CA-01-C | Positivo | `test_ui_02_*` | Con datos válidos y continuar, se emite `POST …/sessions/{id}/steps` con `step` del enum. Los pasos usan un mismo `sessionId` | — | NO EJECUTADO |
-| TC-UI-03 | CA-01-D | Positivo/negativo (5 campos) | `test_ui_03_*` | Al escribir un valor inválido, el campo muestra resultado de validación **sin salir del campo**. Con un valor válido, el resultado cambia | — | NO EJECUTADO |
-| TC-UI-04 | CA-01-D | Positivo | `test_ui_04_*` | Al escribir el usuario, se emite `GET …/usernames/availability?username=…` sin otra acción del usuario | — | NO EJECUTADO |
-| TC-INT-01 | CA-01-A/B/C | Integración UI+API | `test_int_01_*` | Con el `sessionId` generado por la UI, `POST LANDING_VISIBLE` por API da 200, `completed` true, `durationMs` ≥ 0 y `completedSteps` con los pasos enviados por la UI | — | NO EJECUTADO |
-
-### 5.3 Verificación manual
-
-| Id | Sub-criterio | Verificación | Resultado esperado | Observado | Estado |
-|---|---|---|---|---|---|
-| TC-SEC-01 | CA-01-D (relacionado con CA-02) | Tras ejecutar las pruebas, buscar en el log del servidor las contraseñas sintéticas | 0 coincidencias de `S3cret!pass` y de los centinelas | — | NO EJECUTADO |
-
-## 6. Comandos (preparación y ejecución)
-
-Ver sección 7 (comandos) y sección 8 (datos) de este informe.
-
-## 7. Comandos exactos
-
-### 7.1 Requisitos previos
-
-- Python 3.11 o superior (según el backend).
-- JDK 17 o superior y Maven 3.9 o superior (nuevos en el proyecto, para Karate).
-- Google Chrome. Selenium ≥ 4.6 resuelve el driver con Selenium Manager, lo que requiere acceso a internet.
-- Acceso de red a `https://bcp-wallet-mock.yefri.workers.dev` solo para las pruebas `@requires-external`.
-- Para los TC-UI/TC-INT: `locators.json` completo (G-01).
-
-### 7.2 Preparar y arrancar el backend (terminal 1)
-
-```bash
-cd wallet-api
-python -m venv .venv
-source .venv/bin/activate            # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-WALLET_ENV=test WALLET_DB_PATH=./qa-test.db WALLET_OTP_FIXED_CODE=123456 \
-  uvicorn app.main:get_app --factory --port 8080 2>&1 | tee qa-server.log
-```
-
-### 7.3 Humo (terminal 2). Resuelve la brecha G-11
-
-```bash
-curl -s -i -X POST http://localhost:8080/v1/onboarding/sessions
-curl -s -i "http://localhost:8080/v1/usernames/availability?username=qa.humo"
-```
-
-### 7.4 Karate (API)
-
-```bash
-cd wallet-api/qa/karate
-# Solo pruebas sin servicio externo:
-WALLET_API_BASE_URL=http://localhost:8080 \
-  mvn -B test -Dtest=OnboardingRunner -Dkarate.env=test -Dkarate.options="--tags ~@requires-external"
-# Todas, incluidas las que crean cuentas en el servicio externo:
-WALLET_API_BASE_URL=http://localhost:8080 \
-  mvn -B test -Dtest=OnboardingRunner -Dkarate.env=test
-```
-
-El reporte se genera en `target/karate-reports/karate-summary.html`.
-
-### 7.5 Selenium (UI e integración)
-
-```bash
-cd wallet-api/qa/selenium
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-qa.txt
-cp locators.example.json locators.json      # completar todos los "PENDIENTE"
-API_BASE_URL=http://localhost:8080 HEADLESS=true UI_TIMEOUT_S=10 \
-  pytest -v --junitxml=report-ui.xml
-```
-
-Si falta `locators.json` o contiene "PENDIENTE", las pruebas se omiten (`SKIPPED`) con motivo explícito. **Omitida no equivale a pasada.**
-
-### 7.6 Verificación de logs (TC-SEC-01)
-
-```bash
-cd wallet-api
-grep -c "S3cret!pass" qa-server.log     # esperado: 0
-grep -c "Zq9!x" qa-server.log           # esperado: 0
-```
-
-### 7.7 Limpieza
-
-```bash
-# detener el backend (Ctrl+C en la terminal 1) o:
-pkill -f "uvicorn app.main:get_app"
-cd wallet-api
-rm -f qa-test.db qa-server.log
-rm -rf qa/karate/target
-rm -rf qa/selenium/.pytest_cache qa/selenium/report-ui.xml qa/selenium/locators.json
-```
-
-**Limitación:** los wallets creados en `bcp-wallet-mock` por las pruebas `@requires-external` no se pueden eliminar (G-09). Se identifican por los nombres sintéticos de la sección 8.
-
-## 8. Datos de prueba sintéticos
-
-| Dato | Valor | Uso |
-|---|---|---|
-| Nombres | `Ana María` | Cuentas válidas |
-| Apellido paterno / materno | `Quispe` / `Rojas` | Cuentas válidas |
-| Contraseña válida | `S3cret!pass` | Alta de cuentas. No es una credencial real |
-| Usuario | `qa` + hex de `System.nanoTime()` (≤ 20 caracteres) | Único por ejecución |
-| Centinelas inválidos | `Ana123`, `Quispe9`, `Rojas1`, `12345`, `Zq9!x` | TC-API-30. Deben ser rechazados y no reflejarse |
-| Textos de 31 / 21 caracteres | `Aaaaaaaaaa…` generados en el escenario | Pruebas de borde |
-
-No se usan datos personales reales, DNI, fotos ni video.
-
-## 9. Criterios y pruebas fuera de esta entrega (pendientes)
-
-- **CA-02 completo** (reglas de cada campo en la UI, sugerencias en pantalla, robustez de contraseña, no envío a analítica).
-- **CA-03 a CA-13**: cuenta básica y su saldo, topes, OTP de correo y de celular, biometría mock, consentimiento, activación completa.
-
-Cada uno necesita su propia traza. Para diseñarlas se requiere que se incluyan en la lista de criterios a verificar. Para CA-03 (wallet_id y saldo) además hace falta el contrato completo de `bcp-wallet-mock`.
-
-## 10. Resumen de estado
-
-| Conjunto | Pruebas | Ejecutadas | Estado |
+| ID | Brecha | Impacto | Qué se necesita |
 |---|---|---|---|
-| Karate sin servicio externo | 20 (TC-API-01 a 14, 20 a 27, 30, 31) | 0 | NO EJECUTADO |
-| Karate con servicio externo | 3 (TC-API-28, 40, 41) | 0 | NO EJECUTADO |
-| Selenium UI | 4 | 0 | NO EJECUTADO |
-| Integración UI+API | 1 | 0 | NO EJECUTADO |
-| Manual | 1 | 0 | NO EJECUTADO |
+| P-01 | Contenido del frontend desconocido (selectores, rutas, mensajes de validación, momento en que se envía cada paso, momento en que se crea la sesión). | Las pruebas Selenium no pueden fijar selectores reales. `qa/selenium/locators.json` está con valores `null` y las pruebas se **saltan** (skip) con la etiqueta PENDIENTE hasta completarlo. | Plantillas HTML de `onboarding.component.ts` o `data-testid`/IDs estables; ruta de onboarding en `app.routes.ts`; URL/puerto del `ng serve`. |
+| P-02 | Contrato del Wallet mock no verificado (campos de `POST /kyc/verifications`). | Los escenarios etiquetados `@wallet` dependen de que el registro (`POST /v1/users`) devuelva 201. | Confirmar que `WALLET_BASE_URL=https://bcp-wallet-mock.yefri.workers.dev/groups/8` es correcto (httpx concatena el path base con `/kyc/verifications`; no probado) y el esquema real de `Kyc`. |
+| P-03 | No hay endpoint de consulta (GET) de la sesión de onboarding ni de borrado de usuarios/sesiones/wallets. | El estado de sesión solo se infiere por las respuestas de `steps` y `users`. La limpieza de wallets en el Wallet externo no está definida. | Contrato de limpieza del Wallet mock (si existe). |
+| P-04 | Versión de Karate y JDK a usar no definida en el proyecto. | El comando usa la variable `KARATE_JAR`; el JAR y su versión deben ser acordados. | Decisión del equipo (se propone el JAR *standalone* para no agregar Maven/Gradle). |
+| P-05 | Texto/forma exacta de los mensajes de validación en UI y del feedback "disponible / no disponible". | Las pruebas UI verifican **presencia y cambio** de feedback, no el texto exacto. | Textos esperados del diseño. |
+| P-06 | CA-01 dice que el tiempo "inicia cuando la pantalla de onboarding es visible". El backend toma `started_at` al recibir `POST /onboarding/sessions`. | Que la UI llame al endpoint exactamente al hacerse visible la pantalla solo es verificable por UI (UI-01) y requiere P-01. | Confirmar con frontend en qué evento (init del componente, `AfterViewInit`, etc.) se llama. |
+| P-07 | Criterios CA-02…CA-13 no fueron solicitados como alcance de esta tarea. | No se diseñó cobertura para ellos (ver §8). | Solicitud de ampliación de alcance. |
 
-Ninguna corrección se marca como verificada.
+## 3. Descomposición de CA-01
+
+| Sub-criterio | Texto |
+|---|---|
+| CA-01.a | La medición del tiempo de registro inicia cuando la pantalla de onboarding es visible. |
+| CA-01.b | El sistema registra el tiempo (inicio, fin y duración; el fin es la respuesta del registro, según resp. 7). |
+| CA-01.c | El sistema registra los pasos completados. |
+| CA-01.d | Los campos muestran el resultado de su validación mientras el usuario ingresa cada valor. |
+
+## 4. Matriz de trazabilidad
+
+| Sub-criterio | Pruebas Karate (API) | Pruebas Selenium (UI / integración) | Existentes pytest (referencia, no ejecutadas) |
+|---|---|---|---|
+| CA-01.a | KAR-S01, KAR-S02, KAR-S03 | UI-01 | `test_start_session_returns_201` |
+| CA-01.b | KAR-M01, KAR-M02, KAR-M03, KAR-M04 | — (INT-01 pendiente, ver §7) | `test_register_success` (métricas) |
+| CA-01.c | KAR-S04…KAR-S14, KAR-M01, KAR-M02 | UI-04 (integración UI→API) | `test_register_step_records_only_names`, `test_all_step_names_are_accepted`, `test_invalid_step_is_400_without_echo`, `test_step_on_completed_session_is_409` |
+| CA-01.d | KAR-U01…KAR-U07 (contrato que soporta la validación en vivo), KAR-M05…KAR-M08 | UI-02, UI-03, UI-05 | `test_available_username`, `test_invalid_username_is_400`, `test_invalid_names_is_400`, `test_weak_value_is_400_without_echo` |
+
+Corrección propuesta mencionada en la entrega del backend: `StepName` se define con la API funcional de `Enum`. Las pruebas generan los valores de contraseña en tiempo de ejecución. Se cubre con KAR-S04 (los 5 nombres de paso son aceptados), KAR-S07/S08/S09 (valores inválidos rechazados) y las pruebas pytest existentes. Estado: **NO VERIFICADA** (sin ejecución).
+
+## 5. Catálogo de pruebas, resultados esperados y estado
+
+Todos los estados son **NO EJECUTADO**. Resultado observado: **—** (sin evidencia).
+Etiqueta `@wallet` = requiere que el Wallet mock responda 201 al crear la wallet.
+
+### 5.1 Karate — `qa/karate/features/onboarding-session.feature`
+
+| ID | Caso (tipo) | Método y ruta | Resultado esperado | Estado |
+|---|---|---|---|---|
+| KAR-S01 | Inicio de sesión (positivo) | POST `/v1/onboarding/sessions` | 201; `{session_id: uuid, status: "OPEN", started_at: ISO con offset -05:00, completed_steps: []}`; Content-Type JSON | NO EJECUTADO |
+| KAR-S02 | `started_at` cercano a la hora real (borde, `@local-clock`) | ídem | `started_at` dentro de ±60 s del reloj del cliente (válido solo si cliente y servidor comparten reloj) | NO EJECUTADO |
+| KAR-S03 | Unicidad de sesiones (positivo) | POST ×2 | Dos `session_id` distintos | NO EJECUTADO |
+| KAR-S04 | Registro de cada paso válido (positivo, outline ×5: NAMES, PATERNAL_SURNAME, MATERNAL_SURNAME, USERNAME, PASSWORD) | POST `/v1/onboarding/sessions/{id}/steps` | 200; `status: "OPEN"`; `completed_steps == [<paso>]` | NO EJECUTADO |
+| KAR-S05 | Orden y duplicados (borde) | steps: USERNAME, NAMES, NAMES | 200 en las 3; `completed_steps == ["USERNAME","NAMES"]` (sin duplicar) | NO EJECUTADO |
+| KAR-S06 | Los 5 pasos (positivo) | steps ×5 | Último `completed_steps` con 5 elementos | NO EJECUTADO |
+| KAR-S07 | Paso inválido (negativo) | `{"step":"PASO_XYZ"}` | 400; `code: VALIDATION_ERROR`; `details[0].field == "step"`; `trace_id` presente; el valor enviado no aparece en la respuesta | NO EJECUTADO |
+| KAR-S08 | Paso ausente (negativo) | `{}` | 400; `VALIDATION_ERROR`; `details[0].issue == "REQUIRED"` | NO EJECUTADO |
+| KAR-S09 | Paso en minúsculas (borde/negativo) | `{"step":"names"}` | 400; `VALIDATION_ERROR` | NO EJECUTADO |
+| KAR-S10 | Paso inválido no altera estado | inválido y luego NAMES | Tras el 400, NAMES responde 200 con `completed_steps == ["NAMES"]` | NO EJECUTADO |
+| KAR-S11 | Campo extra con dato personal (negativo/privacidad) | `{"step":"NAMES","value":"Juan"}` | 200; la respuesta no contiene "Juan"; `completed_steps == ["NAMES"]` | NO EJECUTADO |
+| KAR-S12 | Sesión inexistente (negativo) | UUID aleatorio | 404; `{code: NOT_FOUND, message, trace_id}` | NO EJECUTADO |
+| KAR-S13 | ID de sesión mal formado (borde) | `no-es-uuid` | 404; `NOT_FOUND` (comportamiento documentado en el README) | NO EJECUTADO |
+| KAR-S14 | Paso sobre sesión completada (negativo, `@wallet`) | registro exitoso y luego step | 409; `SESSION_ALREADY_COMPLETED` | NO EJECUTADO |
+
+### 5.2 Karate — `qa/karate/features/username-validation.feature`
+
+Soporta la "validación mientras el usuario ingresa" (CA-01.d). Aplica las reglas de CA-02 como datos de entrada.
+
+| ID | Caso (tipo) | Resultado esperado | Estado |
+|---|---|---|---|
+| KAR-U01 | Usuario disponible (positivo) | 200; `{username, available: true, suggestions: []}` | NO EJECUTADO |
+| KAR-U02a | Usuarios válidos en el límite (outline: 1 carácter, 20 caracteres, con símbolos `a_b.c-1`) | 200; `available: true` | NO EJECUTADO |
+| KAR-U02b | Usuarios inválidos (outline: con espacio → `INVALID_USERNAME`; solo dígitos → `INVALID_USERNAME`; 21 caracteres → `TOO_LONG`) | 400; `VALIDATION_ERROR`; `details[0].field == "username"`; `details[0].issue` según caso; el valor no se devuelve | NO EJECUTADO |
+| KAR-U02c | Usuario vacío (borde) | 400; `details[0].issue == "TOO_SHORT"` | NO EJECUTADO |
+| KAR-U03 | Usuario ausente (negativo) | 400; `issue == "REQUIRED"` | NO EJECUTADO |
+| KAR-U04 | Nombres inválidos (`Juan1`; 31 letras) | 400; `field == "names"`; `INVALID_CHARACTERS` / `TOO_LONG` | NO EJECUTADO |
+| KAR-U05 | Apellidos inválidos (con espacio; 21 letras) | 400; `field == "paternal_surname"`; `INVALID_CHARACTERS` / `TOO_LONG` | NO EJECUTADO |
+| KAR-U06 | Nombres con tilde y espacio, y límites válidos (30 / 20 letras) (positivo) | 200 | NO EJECUTADO |
+| KAR-U07 | Usuario no disponible, comparación sin distinguir mayúsculas (`@wallet`) | 200; `available: false`; 1 a 5 sugerencias; cada una coincide con `[A-Za-z0-9]{1,20}`; sin repetidas; ninguna igual al usuario pedido | NO EJECUTADO |
+
+### 5.3 Karate — `qa/karate/features/registration-metrics.feature`
+
+| ID | Caso (tipo) | Resultado esperado | Estado |
+|---|---|---|---|
+| KAR-M01 | Registro tras 2 pasos (positivo, `@wallet`) | 201; `registration_metrics` con `session_id` igual al de la sesión; `started_at` igual al de `POST /sessions`; `completed_at >= started_at`; `duration_ms >= 0` y coherente con la resta de fechas (±2 ms); `duration_ms` ≤ tiempo medido por el cliente (+100 ms); `completed_steps == ["NAMES","USERNAME"]`; la contraseña no aparece en la respuesta | NO EJECUTADO |
+| KAR-M02 | Registro sin pasos (borde, `@wallet`) | 201; `completed_steps == []`; `duration_ms >= 0` (comportamiento observado en código; la HU no exige pasos obligatorios) | NO EJECUTADO |
+| KAR-M03 | Reutilizar sesión ya completada (negativo, `@wallet`) | 409; `SESSION_ALREADY_COMPLETED` | NO EJECUTADO |
+| KAR-M04 | Registro rechazado por contraseña débil no cierra la sesión y no llama al Wallet (negativo) | 400; `details[0] == {field: "password", issue: "PASSWORD_WEAK"}`; el valor no se devuelve; luego `POST steps` sobre la misma sesión → 200 | NO EJECUTADO |
+| KAR-M05 | Contraseña corta (borde) | 400; `issue == "TOO_SHORT"` | NO EJECUTADO |
+| KAR-M06 | Sesión inexistente en registro (negativo) | 404; `NOT_FOUND` | NO EJECUTADO |
+| KAR-M07 | Cuerpo vacío (negativo) | 400; algún `details[].issue == "REQUIRED"` | NO EJECUTADO |
+| KAR-M08 | `session_id` con formato inválido en el cuerpo (negativo) | 400; `field == "session_id"`; `issue == "INVALID_UUID"` | NO EJECUTADO |
+
+### 5.4 Selenium — `qa/selenium/test_ca01_onboarding_ui.py`
+
+Bloqueadas hasta completar `locators.json` (P-01). Mientras tanto se saltan con mensaje PENDIENTE, y un skip **no** equivale a pasar.
+
+| ID | Caso | Resultado esperado | Estado |
+|---|---|---|---|
+| UI-01 | Al hacerse visible la pantalla de onboarding se crea la sesión (CA-01.a) | Elemento marcador visible y, en ≤5 s, exactamente una petición `POST …/onboarding/sessions` en el log de red | NO EJECUTADO |
+| UI-02 | Validación en vivo por campo (nombres, apellido paterno, apellido materno, usuario) sin perder foco ni enviar | Tras escribir un valor inválido aparece feedback no vacío; tras escribir uno válido el feedback cambia (otro texto o desaparece) | NO EJECUTADO |
+| UI-03 | Límites de longitud (nombres 31, apellido paterno 21, usuario 21) | El campo trunca al máximo, o se muestra feedback de error | NO EJECUTADO |
+| UI-04 | Integración UI→API de pasos: al completar el campo de nombres y salir del foco | Se envía `POST …/steps` con cuerpo cuyas únicas claves son `step` y `step == "NAMES"`; el valor escrito no viaja en el cuerpo | NO EJECUTADO |
+| UI-05 | Integración UI→API de disponibilidad de usuario | Se envía `POST …/usernames/availability-checks` con el `username` escrito y el feedback del campo es no vacío | NO EJECUTADO |
+
+## 6. Pruebas pytest existentes (referencia)
+
+El backend incluye `tests/` con `TestClient` y un doble del Wallet. **No fueron ejecutadas** en este trabajo. Comando: `pytest`. Estado: NO EJECUTADO.
+
+## 7. Integración UI↔API pendiente
+
+| ID | Caso | Bloqueo |
+|---|---|---|
+| INT-01 | Enviar el formulario completo desde la UI y verificar que `POST /v1/users` devuelve 201 con `registration_metrics` consistentes con los pasos enviados | Requiere P-01 (selector de botón de envío y campos), P-02 (Wallet mock operativo) y lectura del cuerpo de respuesta (CDP `Network.getResponseBody`) o un hook de la app. Marcada **PENDIENTE**, sin código. |
+
+## 8. Cobertura fuera del alcance solicitado
+
+CA-02 a CA-13 no están diseñadas aquí (P-07). Los escenarios de este reporte tocan reglas de CA-02 solo como datos de entrada de CA-01.d. No se verificaron contadores diarios ni operaciones de pago/recarga: el README del backend indica que no están implementados en esta HU.
+
+## 9. Observaciones del análisis de código (no son resultados de prueba)
+
+- `started_at` es el instante en que el servidor procesa `POST /onboarding/sessions`, no el instante en que la pantalla es visible (P-06).
+- La API no impone orden ni obligatoriedad de pasos; `completed_steps` conserva el orden de primera finalización y no repite pasos.
+- No hay `GET` de sesión; la verificación de estado es indirecta.
+- Sin idempotencia (fuera de alcance, resp. 10): reintentar un registro fallido tras crear la wallet puede dejar wallets huérfanas en el Wallet externo.
+
+## 10. Requisitos previos
+
+| Requisito | Detalle |
+|---|---|
+| Python 3.12 | Coincide con el `Dockerfile` del proyecto. |
+| Dependencias backend | `pip install -r requirements.txt` |
+| JDK + Karate | JAR *standalone* de Karate (versión a acordar, P-04). Variable `KARATE_JAR`. |
+| Chrome + Selenium | Google Chrome instalado. `pip install -r qa/selenium/requirements-e2e.txt` (Selenium Manager resuelve el driver; requiere acceso de red la primera vez). |
+| Node/npm | Solo para levantar el frontend Angular; los scripts exactos de `package.json` no se conocen. |
+| Red | Acceso a `https://bcp-wallet-mock.yefri.workers.dev` para los escenarios `@wallet`. |
+
+Variables de entorno del backend para las pruebas:
+- `APP_ENV=test`
+- `WALLET_BASE_URL=https://bcp-wallet-mock.yefri.workers.dev/groups/8` (supuesto P-02)
+
+Variables de las pruebas:
+- Karate: `-DbaseUrl=http://localhost:8000/v1` (valor por defecto del config)
+- Selenium: `FRONTEND_URL` (obligatoria, sin valor por defecto), `ONBOARDING_PATH` (opcional, ruta relativa), `E2E_HEADLESS` (por defecto `true`)
+
+## 11. Comandos
+
+### 11.1 Preparar y levantar el backend (Linux/macOS)
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+export APP_ENV=test
+export WALLET_BASE_URL="https://bcp-wallet-mock.yefri.workers.dev/groups/8"
+nohup uvicorn app.main:app --port 8000 > /tmp/wallet-api.log 2>&1 &
+echo $! > /tmp/wallet-api.pid
+
+# Comprobación (esperado: 200)
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8000/openapi.json
+```
+
+### 11.2 Karate (API)
+
+```bash
+export KARATE_JAR=/ruta/a/karate-<version>.jar   # PENDIENTE P-04
+cd qa/karate
+
+# Suite completa (requiere Wallet mock operativo)
+java -DbaseUrl=http://localhost:8000/v1 -jar "$KARATE_JAR" -o target/karate features
+
+# Solo escenarios que NO dependen del Wallet mock
+java -DbaseUrl=http://localhost:8000/v1 -jar "$KARATE_JAR" -t "~@wallet" -o target/karate features
+
+# Solo escenarios que dependen del Wallet mock
+java -DbaseUrl=http://localhost:8000/v1 -jar "$KARATE_JAR" -t "@wallet" -o target/karate features
+```
+
+Los helpers llevan la etiqueta `@ignore` y no deben ejecutarse solos. Reporte HTML en `qa/karate/target/karate/`. Verificar las opciones del JAR con `java -jar "$KARATE_JAR" --help`.
+
+### 11.3 Selenium (UI)
+
+```bash
+pip install -r qa/selenium/requirements-e2e.txt
+
+# Frontend (PENDIENTE P-01: confirmar scripts de package.json y puerto)
+npm install
+npm start    # supuesto
+
+export FRONTEND_URL=http://localhost:4200   # supuesto: confirmar
+export E2E_HEADLESS=true
+# Completar primero qa/selenium/locators.json
+pytest qa/selenium -v
+```
+
+### 11.4 Pruebas unitarias/API existentes (referencia)
+
+```bash
+pytest
+```
+
+### 11.5 Limpieza
+
+```bash
+# Detener backend (los datos son en memoria y desaparecen al detenerlo)
+kill "$(cat /tmp/wallet-api.pid)" && rm -f /tmp/wallet-api.pid /tmp/wallet-api.log
+
+# Detener el frontend con Ctrl+C en su terminal
+
+# Reportes y cachés de prueba
+rm -rf qa/karate/target qa/selenium/__pycache__ .pytest_cache
+
+# Opcional: entorno virtual
+deactivate && rm -rf .venv
+```
+
+Las wallets creadas en el Wallet mock externo por los escenarios `@wallet` **no tienen operación de borrado conocida** (P-03). Quedan en el servicio externo y deben identificarse con el `user_id` de la referencia externa (`external_reference`).
+
+## 12. Datos de prueba sintéticos
+
+| Dato | Valor / generación |
+|---|---|
+| Usuario único | `qa` + 12 caracteres hex aleatorios (14 caracteres) generado en `karate-config.js` |
+| Contraseña válida | `Aa1` + 12 hex aleatorios (generada en ejecución, sin literales en el repositorio) |
+| Contraseña débil | 12 letras `a` generadas con `'a'.repeat(12)` |
+| Contraseña corta | `'A1'.repeat(3)` (6 caracteres) |
+| Nombres | `Juan Carlos`, `José María` |
+| Apellidos | `Perez`, `Rojas` |
+| UUID inexistente | `6f1b1c1e-0000-4000-8000-000000000000` |
+| Nombre de 30 letras | `Abcdefghijklmnopqrstuvwxyzabcd` |
+| Apellido de 20 letras | `Abcdefghijklmnopqrst` |
+
+No se usan datos personales reales, correos, celulares ni fotos de DNI.
+
+## 13. Resumen de estado
+
+| Conjunto | Pruebas | Estado |
+|---|---|---|
+| Karate onboarding-session | 14 IDs (KAR-S01…S14) | NO EJECUTADO |
+| Karate username-validation | 9 IDs (KAR-U01…U07 con sub-casos) | NO EJECUTADO |
+| Karate registration-metrics | 8 IDs (KAR-M01…M08) | NO EJECUTADO |
+| Selenium | 5 IDs (UI-01…UI-05) | NO EJECUTADO (bloqueadas por P-01) |
+| Integración INT-01 | 1 | PENDIENTE (sin código) |
+| pytest existente | suite completa | NO EJECUTADO |
+| Corrección `StepName`/contraseñas sin literales | — | NO VERIFICADA |
+
+Resultados observados: ninguno. Este reporte debe actualizarse con la salida real (`qa/karate/target/karate/`, salida de `pytest`) antes de marcar cualquier prueba como ejecutada o aprobada.
+
+## 14. Limitaciones de este entregable
+
+- Los archivos `.feature` y Python no fueron ejecutados ni validados sintácticamente contra una versión concreta de Karate o Selenium. Pueden requerir ajustes menores en la primera corrida.
+- Las aserciones de UI son estructurales (presencia/cambio de feedback), no de texto, hasta resolver P-05.
+- `postData` de las peticiones puede no estar disponible en el log de rendimiento de Chrome; en ese caso UI-04 y UI-05 se marcan como inconclusas (skip), no como aprobadas.
 ````
 
 ---
 
-# 2. Karate (API)
+## 2. Karate
 
-### `qa/karate/pom.xml`
-
-Versiones propuestas, no existentes en el proyecto (G-10).
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
-
-  <groupId>pe.wallet.qa</groupId>
-  <artifactId>wallet-karate</artifactId>
-  <version>0.1.0</version>
-  <packaging>jar</packaging>
-
-  <properties>
-    <maven.compiler.source>17</maven.compiler.source>
-    <maven.compiler.target>17</maven.compiler.target>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <karate.version>1.4.1</karate.version>
-  </properties>
-
-  <dependencies>
-    <dependency>
-      <groupId>com.intuit.karate</groupId>
-      <artifactId>karate-junit5</artifactId>
-      <version>${karate.version}</version>
-      <scope>test</scope>
-    </dependency>
-  </dependencies>
-
-  <build>
-    <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.2.5</version>
-        <configuration>
-          <argLine>-Dfile.encoding=UTF-8</argLine>
-        </configuration>
-      </plugin>
-    </plugins>
-  </build>
-</project>
-```
-
-### `qa/karate/src/test/java/onboarding/OnboardingRunner.java`
-
-```java
-package onboarding;
-
-import com.intuit.karate.junit5.Karate;
-
-class OnboardingRunner {
-
-    @Karate.Test
-    Karate onboarding() {
-        return Karate.run("classpath:karate/onboarding");
-    }
-}
-```
-
-### `qa/karate/src/test/resources/karate-config.js`
+### `qa/karate/karate-config.js`
 
 ```javascript
 function fn() {
-  var env = karate.env || 'local';
-  karate.log('karate.env =', env);
-  var baseUrl = java.lang.System.getenv('WALLET_API_BASE_URL') || 'http://localhost:8080';
+  var UUID = Java.type('java.util.UUID');
+  var System = Java.type('java.lang.System');
+
+  function hex(n) {
+    return ('' + UUID.randomUUID()).replace(/-/g, '').substring(0, n);
+  }
+
+  var baseUrl = karate.properties['baseUrl'] || System.getenv('API_BASE_URL') || 'http://localhost:8000/v1';
+
+  karate.configure('connectTimeout', 10000);
+  // El registro llama al Wallet mock externo (timeouts del backend: 2 s conexión, 5 s lectura).
+  karate.configure('readTimeout', 30000);
+
   return {
-    baseUrl: baseUrl
+    baseUrl: baseUrl,
+    unknownUuid: '6f1b1c1e-0000-4000-8000-000000000000',
+    // Usuario sintético: 14 caracteres, con letras, sin símbolos ni espacios.
+    uniqueUsername: function () { return 'qa' + hex(12); },
+    // Valor sintético válido: >= 10 caracteres con letras y números, generado en ejecución.
+    validPassword: function () { return 'Aa1' + hex(12); },
+    // Valor sintético débil: 12 letras, sin números.
+    weakPassword: function () { return 'a'.repeat(12); },
+    // Valor sintético corto: 6 caracteres.
+    shortPassword: function () { return 'A1'.repeat(3); },
+    distinctCount: function (list) {
+      var seen = {};
+      var n = karate.sizeOf(list);
+      for (var i = 0; i < n; i++) { seen[list[i]] = true; }
+      return Object.keys(seen).length;
+    }
   };
 }
 ```
 
-### `qa/karate/src/test/resources/karate/data/account-valid.json`
-
-```json
-{
-  "firstNames": "Ana María",
-  "paternalSurname": "Quispe",
-  "maternalSurname": "Rojas",
-  "username": "REPLACE_AT_RUNTIME",
-  "password": "S3cret!pass"
-}
-```
-
-### `qa/karate/src/test/resources/karate/common/start-session.feature`
+### `qa/karate/features/helpers/start-session.feature`
 
 ```gherkin
 @ignore
-Feature: Helper - inicia una sesión de onboarding
+Feature: Helper - iniciar sesión de onboarding
 
-  Scenario: iniciar sesión
+  Scenario: Inicia sesión
     Given url baseUrl
-    And path 'v1', 'onboarding', 'sessions'
+    And path 'onboarding', 'sessions'
     When method post
     Then status 201
-    * def sid = response.sessionId
-    * def startedAt = response.startedAt
+    * def sessionId = response.session_id
+    * def startedAt = response.started_at
 ```
 
-### `qa/karate/src/test/resources/karate/onboarding/session-lifecycle.feature`
+### `qa/karate/features/helpers/register-user.feature`
 
 ```gherkin
-@api @ca-01
-Feature: CA-01 - Sesión de onboarding (inicio de medición, tiempo y pasos completados)
-  Contrato bajo prueba (según código backend, sin ejecutar):
-    POST /v1/onboarding/sessions
-    POST /v1/onboarding/sessions/{sessionId}/steps
+@ignore
+Feature: Helper - registrar usuario (no valida el código de estado)
+
+  # Argumentos: sessionId (obligatorio), username (opcional), overrides (opcional, mapa de campos del cuerpo)
+  Scenario: Registra usuario
+    * def username = karate.get('username') || uniqueUsername()
+    * def overrides = karate.get('overrides') || {}
+    * def base = { session_id: '#(sessionId)', names: 'Juan Carlos', paternal_surname: 'Perez', maternal_surname: 'Rojas', username: '#(username)', password: '#(validPassword())' }
+    * def body = karate.merge(base, overrides)
+    * def pw = body.password
+    Given url baseUrl
+    And path 'users'
+    And request body
+    When method post
+```
+
+### `qa/karate/features/onboarding-session.feature`
+
+```gherkin
+@CA-01
+Feature: CA-01 - Sesión de onboarding y registro de pasos completados
 
   Background:
     * url baseUrl
-    * def isIso = function(s){ return typeof s == 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(s) }
-    * def newUuid = function(){ return '' + java.util.UUID.randomUUID() }
-    * def Thread = Java.type('java.lang.Thread')
-    * def startSession = read('classpath:karate/common/start-session.feature')
 
-  @TC-API-01 @positive @contract
-  Scenario: TC-API-01 Inicia sesión de onboarding y devuelve el esquema esperado
-    Given path 'v1', 'onboarding', 'sessions'
+  @positive @KAR-S01
+  Scenario: KAR-S01 Iniciar sesión devuelve 201 con el esquema esperado
+    Given path 'onboarding', 'sessions'
     When method post
     Then status 201
+    And match header Content-Type contains 'application/json'
     And match response ==
-      """
-      {
-        sessionId: '#uuid',
-        startedAt: '#? isIso(_)',
-        completedSteps: [],
-        completed: false,
-        endedAt: null,
-        durationMs: null
-      }
-      """
-    And match header X-Trace-Id == '#notnull'
+    """
+    {
+      session_id: '#uuid',
+      status: 'OPEN',
+      started_at: '#regex .+-05:00$',
+      completed_steps: '#[0]'
+    }
+    """
 
-  @TC-API-02 @edge
-  Scenario: TC-API-02 Dos sesiones consecutivas son independientes
-    * def a = call startSession
-    * def b = call startSession
-    * match a.sid != b.sid
-    * match a.startedAt == '#? isIso(_)'
-    * match b.startedAt == '#? isIso(_)'
-
-  @TC-API-03 @contract @auth
-  Scenario: TC-API-03 Iniciar sesión no exige cabecera Authorization (según código)
-    Given path 'v1', 'onboarding', 'sessions'
-    And header Accept = 'application/json'
+  @boundary @local-clock @KAR-S02
+  Scenario: KAR-S02 started_at es cercano a la hora real (solo si cliente y servidor comparten reloj)
+    * def System = Java.type('java.lang.System')
+    * def OffsetDateTime = Java.type('java.time.OffsetDateTime')
+    Given path 'onboarding', 'sessions'
     When method post
     Then status 201
-    And match response.completed == false
+    * def nowMs = System.currentTimeMillis()
+    * def startedMs = OffsetDateTime.parse(response.started_at).toInstant().toEpochMilli()
+    * assert Math.abs(nowMs - startedMs) < 60000
 
-  @TC-API-04 @negative @integrity
-  Scenario: TC-API-04 El cliente no puede fijar startedAt ni el estado de la sesión
-    Given path 'v1', 'onboarding', 'sessions'
-    And request { startedAt: '2000-01-01T00:00:00Z', completedSteps: ['LANDING_VISIBLE'], completed: true }
-    When method post
-    Then status 201
-    And match response.startedAt != '2000-01-01T00:00:00Z'
-    And match response.startedAt == '#? isIso(_)'
-    And match response.completedSteps == []
-    And match response.completed == false
+  @positive @KAR-S03
+  Scenario: KAR-S03 Cada sesión tiene identificador distinto
+    * def a = call read('helpers/start-session.feature')
+    * def b = call read('helpers/start-session.feature')
+    * assert a.sessionId != b.sessionId
 
-  @TC-API-05 @negative @method
-  Scenario: TC-API-05 GET sobre /onboarding/sessions responde 405 con esquema Error
-    Given path 'v1', 'onboarding', 'sessions'
-    When method get
-    Then status 405
-    And match response contains { code: 'METHOD_NOT_ALLOWED', message: '#string', traceId: '#string' }
-
-  @TC-API-06 @positive
-  Scenario: TC-API-06 Registra el primer paso completado
-    * def s = call startSession
-    Given path 'v1', 'onboarding', 'sessions', s.sid, 'steps'
-    And request { step: 'PERSONAL_DATA_COMPLETED' }
-    When method post
-    Then status 200
-    And match response.sessionId == s.sid
-    And match response.completedSteps == ['PERSONAL_DATA_COMPLETED']
-    And match response.completed == false
-    And match response.endedAt == null
-    And match response.durationMs == null
-
-  @TC-API-07 @positive @edge
-  Scenario: TC-API-07 Los pasos se acumulan en orden y un paso repetido no se duplica
-    * def s = call startSession
-    * def stepUrl = ['v1', 'onboarding', 'sessions', s.sid, 'steps']
-
-    Given path 'v1', 'onboarding', 'sessions', s.sid, 'steps'
-    And request { step: 'PERSONAL_DATA_COMPLETED' }
-    When method post
-    Then status 200
-
-    Given path 'v1', 'onboarding', 'sessions', s.sid, 'steps'
-    And request { step: 'CREDENTIALS_COMPLETED' }
-    When method post
-    Then status 200
-    And match response.completedSteps == ['PERSONAL_DATA_COMPLETED', 'CREDENTIALS_COMPLETED']
-
-    Given path 'v1', 'onboarding', 'sessions', s.sid, 'steps'
-    And request { step: 'PERSONAL_DATA_COMPLETED' }
-    When method post
-    Then status 200
-    And match response.completedSteps == ['PERSONAL_DATA_COMPLETED', 'CREDENTIALS_COMPLETED']
-    And match response.completed == false
-
-  @TC-API-08 @edge
-  Scenario: TC-API-08 Los pasos de una sesión no aparecen en otra
-    * def a = call startSession
-    * def b = call startSession
-
-    Given path 'v1', 'onboarding', 'sessions', a.sid, 'steps'
-    And request { step: 'PERSONAL_DATA_COMPLETED' }
-    When method post
-    Then status 200
-
-    Given path 'v1', 'onboarding', 'sessions', b.sid, 'steps'
-    And request { step: 'CREDENTIALS_COMPLETED' }
-    When method post
-    Then status 200
-    And match response.completedSteps == ['CREDENTIALS_COMPLETED']
-
-  @TC-API-09 @positive @timing
-  Scenario: TC-API-09 LANDING_VISIBLE cierra la sesión y calcula la duración
-    * def s = call startSession
-    * eval Thread.sleep(1500)
-
-    Given path 'v1', 'onboarding', 'sessions', s.sid, 'steps'
-    And request { step: 'LANDING_VISIBLE' }
-    When method post
-    Then status 200
-    And match response.completed == true
-    And match response.completedSteps contains 'LANDING_VISIBLE'
-    And match response.startedAt == s.startedAt
-    And match response.endedAt == '#? isIso(_)'
-    And match response.durationMs == '#? _ >= 1500 && _ < 60000'
-    * def delta = new Date(response.endedAt).getTime() - new Date(s.startedAt).getTime()
-    * assert delta >= 0
-    * assert Math.abs(delta - response.durationMs) <= 5
-
-  @TC-API-10 @negative
-  Scenario: TC-API-10 No se aceptan pasos sobre una sesión cerrada
-    * def s = call startSession
-
-    Given path 'v1', 'onboarding', 'sessions', s.sid, 'steps'
-    And request { step: 'LANDING_VISIBLE' }
-    When method post
-    Then status 200
-
-    Given path 'v1', 'onboarding', 'sessions', s.sid, 'steps'
-    And request { step: 'LANDING_VISIBLE' }
-    When method post
-    Then status 409
-    And match response contains { code: 'SESSION_CLOSED', message: '#string', traceId: '#string' }
-
-    Given path 'v1', 'onboarding', 'sessions', s.sid, 'steps'
-    And request { step: 'PERSONAL_DATA_COMPLETED' }
-    When method post
-    Then status 409
-    And match response.code == 'SESSION_CLOSED'
-
-  @TC-API-11 @negative
-  Scenario Outline: TC-API-11 Paso inválido '<step>' devuelve 400 sin reflejar el valor
-    * def s = call startSession
-    Given path 'v1', 'onboarding', 'sessions', s.sid, 'steps'
+  @positive @KAR-S04
+  Scenario Outline: KAR-S04 Registrar el paso <step> lo agrega a completed_steps
+    * def sess = call read('helpers/start-session.feature')
+    Given path 'onboarding', 'sessions', sess.sessionId, 'steps'
     And request { step: '<step>' }
     When method post
-    Then status 400
-    And match response contains { code: 'INVALID_FIELD', message: '#string', traceId: '#string' }
-    And match response.fields[*].field contains 'step'
-    And match karate.toString(response) !contains '<step>'
-
-    Examples:
-      | step                    |
-      | UNKNOWN_STEP            |
-      | personal_data_completed |
-      | LANDING VISIBLE         |
-
-  @TC-API-12 @negative
-  Scenario Outline: TC-API-12 Cuerpo inválido <body> devuelve 400 con campo step
-    * def s = call startSession
-    * def body = <body>
-    Given path 'v1', 'onboarding', 'sessions', s.sid, 'steps'
-    And request body
-    When method post
-    Then status 400
-    And match response.code == 'INVALID_FIELD'
-    And match response.fields[*].field contains 'step'
-
-    Examples:
-      | body          |
-      | {}            |
-      | { step: null }|
-      | { step: 123 } |
-
-  @TC-API-13 @negative
-  Scenario: TC-API-13 Sesión inexistente devuelve 404 NOT_FOUND
-    * def unknownId = newUuid()
-    Given path 'v1', 'onboarding', 'sessions', unknownId, 'steps'
-    And request { step: 'PERSONAL_DATA_COMPLETED' }
-    When method post
-    Then status 404
-    And match response contains { code: 'NOT_FOUND', message: '#string', traceId: '#string' }
-    And match header X-Trace-Id == response.traceId
-
-  @TC-API-14 @negative
-  Scenario: TC-API-14 sessionId malformado devuelve 404 NOT_FOUND (README punto 5)
-    Given path 'v1', 'onboarding', 'sessions', 'no-es-un-uuid', 'steps'
-    And request { step: 'PERSONAL_DATA_COMPLETED' }
-    When method post
-    Then status 404
-    And match response contains { code: 'NOT_FOUND', message: '#string', traceId: '#string' }
-```
-
-### `qa/karate/src/test/resources/karate/onboarding/username-validation.feature`
-
-```gherkin
-@api @ca-01 @ca-02-support
-Feature: CA-01-D - Validación por campo mientras se escribe (soporte backend: disponibilidad de usuario)
-  Contrato bajo prueba: GET /v1/usernames/availability
-
-  Background:
-    * url baseUrl
-    * def uniqueUser = function(){ return 'qa' + java.lang.Long.toHexString(java.lang.System.nanoTime()) }
-    * def repeat = function(ch, n){ var s = ''; for (var i = 0; i < n; i++) s += ch; return s }
-    * def validAccount = read('classpath:karate/data/account-valid.json')
-
-  @TC-API-20 @positive
-  Scenario: TC-API-20 Usuario libre devuelve available=true sin sugerencias
-    * def u = uniqueUser()
-    Given path 'v1', 'usernames', 'availability'
-    And param username = u
-    When method get
     Then status 200
-    And match response == { username: '#(u)', available: true }
-
-  @TC-API-21 @edge
-  Scenario: TC-API-21 Usuario de exactamente 20 caracteres es aceptado
-    * def u = (uniqueUser() + 'zzzzzzzzzzzzzzzzzzzz').substring(0, 20)
-    * assert u.length == 20
-    Given path 'v1', 'usernames', 'availability'
-    And param username = u
-    When method get
-    Then status 200
-    And match response.available == true
-
-  @TC-API-22 @positive
-  Scenario Outline: TC-API-22 Usuario con símbolo '<prefix>' es aceptado
-    * def u = '<prefix>' + uniqueUser().substring(0, 10)
-    Given path 'v1', 'usernames', 'availability'
-    And param username = u
-    When method get
-    Then status 200
-    And match response == { username: '#(u)', available: true }
+    And match response.status == 'OPEN'
+    And match response.session_id == sess.sessionId
+    And match response.completed_steps == ['<step>']
 
     Examples:
-      | prefix |
-      | qa.    |
-      | qa_    |
-      | qa-    |
-      | qa!    |
+      | step             |
+      | NAMES            |
+      | PATERNAL_SURNAME |
+      | MATERNAL_SURNAME |
+      | USERNAME         |
+      | PASSWORD         |
 
-  @TC-API-23 @negative
-  Scenario Outline: TC-API-23 Usuario inválido ('<motivo>') devuelve 400
-    Given path 'v1', 'usernames', 'availability'
-    And param username = '<valor>'
-    When method get
-    Then status 400
-    And match response contains { code: 'INVALID_FIELD', message: '#string', traceId: '#string' }
-    And match response.fields[*].field contains 'username'
-
-    Examples:
-      | motivo       | valor                  |
-      | sin letras   | 12345                  |
-      | 21 caracteres| aaaaaaaaaaaaaaaaaaaaa  |
-      | con espacio  | con espacio            |
-
-  @TC-API-24 @negative
-  Scenario: TC-API-24 Falta el parámetro username
-    Given path 'v1', 'usernames', 'availability'
-    When method get
-    Then status 400
-    And match response.code == 'INVALID_FIELD'
-    And match response.fields[*].field contains 'username'
-
-  @TC-API-25 @edge
-  Scenario: TC-API-25 Parámetro username vacío
-    Given path 'v1', 'usernames', 'availability'
-    And param username = ''
-    When method get
-    Then status 400
-    And match response.code == 'INVALID_FIELD'
-
-  @TC-API-26 @negative
-  Scenario Outline: TC-API-26 Parámetro opcional <param> inválido devuelve 400
-    Given path 'v1', 'usernames', 'availability'
-    And param username = uniqueUser()
-    And param <param> = '<valor>'
-    When method get
-    Then status 400
-    And match response.code == 'INVALID_FIELD'
-    And match response.fields[*].field contains '<param>'
-
-    Examples:
-      | param           | valor                           |
-      | firstNames      | Ana123                          |
-      | paternalSurname | Quispe9                         |
-      | maternalSurname | Rojas 1                         |
-      | firstNames      | Aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa |
-      | paternalSurname | Aaaaaaaaaaaaaaaaaaaaa           |
-
-  @TC-API-27 @edge
-  Scenario: TC-API-27 Parámetros opcionales en el límite máximo válido
-    * def first30 = repeat('A', 30)
-    * def last20 = repeat('B', 20)
-    Given path 'v1', 'usernames', 'availability'
-    And param username = uniqueUser()
-    And param firstNames = first30
-    And param paternalSurname = last20
-    And param maternalSurname = last20
-    When method get
-    Then status 200
-    And match response.available == true
-
-  @TC-API-28 @integration @requires-external
-  Scenario: TC-API-28 Usuario ocupado: available=false con sugerencias alfanuméricas
-    * def u = uniqueUser()
-    * def body = validAccount
-    * set body.username = u
-
-    Given path 'v1', 'accounts'
-    And request body
+  @boundary @KAR-S05
+  Scenario: KAR-S05 Conserva el orden de finalización y no duplica pasos
+    * def sess = call read('helpers/start-session.feature')
+    Given path 'onboarding', 'sessions', sess.sessionId, 'steps'
+    And request { step: 'USERNAME' }
     When method post
-    Then status 201
-
-    Given path 'v1', 'usernames', 'availability'
-    And param username = u.toUpperCase()
-    And param firstNames = 'Ana'
-    And param paternalSurname = 'Quispe'
-    When method get
     Then status 200
-    And match response.available == false
-    And assert response.suggestions.length > 0 && response.suggestions.length <= 3
-    And match each response.suggestions == '#regex ^[A-Za-z0-9]{1,20}$'
-    And match response.suggestions !contains u
-
-    Given path 'v1', 'accounts'
-    And request body
+    Given path 'onboarding', 'sessions', sess.sessionId, 'steps'
+    And request { step: 'NAMES' }
     When method post
-    Then status 409
-    And match response.code == 'USERNAME_TAKEN'
-    And assert response.suggestions.length > 0
-```
+    Then status 200
+    Given path 'onboarding', 'sessions', sess.sessionId, 'steps'
+    And request { step: 'NAMES' }
+    When method post
+    Then status 200
+    And match response.completed_steps == ['USERNAME', 'NAMES']
 
-### `qa/karate/src/test/resources/karate/onboarding/account-field-validation.feature`
+  @positive @KAR-S06
+  Scenario: KAR-S06 Se registran los cinco pasos del formulario
+    * def sess = call read('helpers/start-session.feature')
+    * def steps = ['NAMES', 'PATERNAL_SURNAME', 'MATERNAL_SURNAME', 'USERNAME', 'PASSWORD']
+    * def last = null
+    * def send =
+    """
+    function(step) {
+      var res = karate.call('helpers/post-step.feature', { sessionId: sess.sessionId, step: step });
+      return res.response;
+    }
+    """
+    * def results = karate.map(steps, send)
+    * match karate.sizeOf(results) == 5
+    * match results[4].completed_steps == steps
 
-```gherkin
-@api @ca-01 @ca-02-support
-Feature: CA-01-D - Resultado de validación por campo en el alta (POST /v1/accounts, solo casos rechazados)
-  Estos escenarios no crean datos: la validación de esquema ocurre antes de llamar al servicio externo.
-
-  Background:
-    * url baseUrl
-    * def validAccount = read('classpath:karate/data/account-valid.json')
-    * def uniqueUser = function(){ return 'qa' + java.lang.Long.toHexString(java.lang.System.nanoTime()) }
-
-  @TC-API-30 @negative
-  Scenario Outline: TC-API-30 Campo <field> inválido devuelve 400 y no refleja el valor
-    * def body = validAccount
-    * set body.username = uniqueUser()
-    * set body.<field> = '<value>'
-    Given path 'v1', 'accounts'
-    And request body
+  @negative @KAR-S07
+  Scenario: KAR-S07 Paso inválido devuelve 400 sin eco del valor
+    * def sess = call read('helpers/start-session.feature')
+    Given path 'onboarding', 'sessions', sess.sessionId, 'steps'
+    And request { step: 'PASO_XYZ' }
     When method post
     Then status 400
-    And match response contains { code: 'INVALID_FIELD', message: '#string', traceId: '#string' }
-    And match response.fields[*].field contains '<field>'
-    And match karate.toString(response) !contains '<value>'
+    And match response contains { code: 'VALIDATION_ERROR', message: '#string', trace_id: '#string' }
+    And match response.details[0].field == 'step'
+    And assert karate.pretty(response).indexOf('PASO_XYZ') == -1
 
-    Examples:
-      | field           | value   |
-      | firstNames      | Ana123  |
-      | paternalSurname | Quispe9 |
-      | maternalSurname | Rojas1  |
-      | username        | 12345   |
-      | password        | Zq9!x   |
-
-  @TC-API-31 @negative
-  Scenario: TC-API-31 Cuerpo vacío lista todos los campos obligatorios
-    Given path 'v1', 'accounts'
+  @negative @KAR-S08
+  Scenario: KAR-S08 Paso ausente devuelve 400 REQUIRED
+    * def sess = call read('helpers/start-session.feature')
+    Given path 'onboarding', 'sessions', sess.sessionId, 'steps'
     And request {}
     When method post
     Then status 400
-    And match response.code == 'INVALID_FIELD'
-    And match response.fields[*].field contains ['firstNames', 'paternalSurname', 'maternalSurname', 'username', 'password']
+    And match response.code == 'VALIDATION_ERROR'
+    And match response.details[0] == { field: 'step', issue: 'REQUIRED' }
+
+  @boundary @negative @KAR-S09
+  Scenario: KAR-S09 Paso en minúsculas se rechaza
+    * def sess = call read('helpers/start-session.feature')
+    Given path 'onboarding', 'sessions', sess.sessionId, 'steps'
+    And request { step: 'names' }
+    When method post
+    Then status 400
+    And match response.code == 'VALIDATION_ERROR'
+
+  @negative @KAR-S10
+  Scenario: KAR-S10 Un paso inválido no altera el estado de la sesión
+    * def sess = call read('helpers/start-session.feature')
+    Given path 'onboarding', 'sessions', sess.sessionId, 'steps'
+    And request { step: 'PASO_XYZ' }
+    When method post
+    Then status 400
+    Given path 'onboarding', 'sessions', sess.sessionId, 'steps'
+    And request { step: 'NAMES' }
+    When method post
+    Then status 200
+    And match response.completed_steps == ['NAMES']
+
+  @negative @privacy @KAR-S11
+  Scenario: KAR-S11 Solo se registran nombres de paso, no valores ingresados
+    * def sess = call read('helpers/start-session.feature')
+    Given path 'onboarding', 'sessions', sess.sessionId, 'steps'
+    And request { step: 'NAMES', value: 'Juan' }
+    When method post
+    Then status 200
+    And match response.completed_steps == ['NAMES']
+    And assert karate.pretty(response).indexOf('Juan') == -1
+
+  @negative @KAR-S12
+  Scenario: KAR-S12 Sesión inexistente devuelve 404
+    Given path 'onboarding', 'sessions', unknownUuid, 'steps'
+    And request { step: 'NAMES' }
+    When method post
+    Then status 404
+    And match response == { code: 'NOT_FOUND', message: '#string', trace_id: '#string' }
+
+  @boundary @negative @KAR-S13
+  Scenario: KAR-S13 Identificador de sesión mal formado devuelve 404
+    Given path 'onboarding', 'sessions', 'no-es-uuid', 'steps'
+    And request { step: 'NAMES' }
+    When method post
+    Then status 404
+    And match response.code == 'NOT_FOUND'
+
+  @wallet @negative @KAR-S14
+  Scenario: KAR-S14 No se pueden registrar pasos en una sesión ya completada
+    * def sess = call read('helpers/start-session.feature')
+    * def reg = call read('helpers/register-user.feature') { sessionId: '#(sess.sessionId)' }
+    * match reg.responseStatus == 201
+    Given path 'onboarding', 'sessions', sess.sessionId, 'steps'
+    And request { step: 'NAMES' }
+    When method post
+    Then status 409
+    And match response.code == 'SESSION_ALREADY_COMPLETED'
 ```
 
-### `qa/karate/src/test/resources/karate/onboarding/onboarding-account-integration.feature`
+KAR-S06 usa un helper adicional que debe existir para que el escenario funcione:
+
+### `qa/karate/features/helpers/post-step.feature`
 
 ```gherkin
-@api @integration @requires-external @ca-01
-Feature: CA-01-B/C - Seguimiento de onboarding de extremo a extremo (sesión + alta de cuenta)
-  Estos escenarios crean cuentas reales en bcp-wallet-mock (sin endpoint de baja, brecha G-09).
+@ignore
+Feature: Helper - registrar un paso
+
+  # Argumentos: sessionId, step
+  Scenario: Registra paso
+    Given url baseUrl
+    And path 'onboarding', 'sessions', sessionId, 'steps'
+    And request { step: '#(step)' }
+    When method post
+    Then status 200
+```
+
+### `qa/karate/features/username-validation.feature`
+
+```gherkin
+@CA-01 @CA-01.d
+Feature: CA-01.d - Contrato que soporta la validación de campos mientras el usuario escribe
 
   Background:
     * url baseUrl
-    * def isIso = function(s){ return typeof s == 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(s) }
-    * def uniqueUser = function(){ return 'qa' + java.lang.Long.toHexString(java.lang.System.nanoTime()) }
-    * def newUuid = function(){ return '' + java.util.UUID.randomUUID() }
-    * def startSession = read('classpath:karate/common/start-session.feature')
-    * def validAccount = read('classpath:karate/data/account-valid.json')
 
-  @TC-API-40
-  Scenario: TC-API-40 Sesión + paso de datos + alta de cuenta + landing registra los pasos y la duración
-    * def s = call startSession
-
-    Given path 'v1', 'onboarding', 'sessions', s.sid, 'steps'
-    And request { step: 'PERSONAL_DATA_COMPLETED' }
+  @positive @KAR-U01
+  Scenario: KAR-U01 Usuario disponible
+    * def u = uniqueUsername()
+    Given path 'usernames', 'availability-checks'
+    And request { username: '#(u)' }
     When method post
     Then status 200
+    And match response == { username: '#(u)', available: true, suggestions: '#[0]' }
 
-    * def body = validAccount
-    * set body.username = uniqueUser()
-    * set body.onboardingSessionId = s.sid
-    Given path 'v1', 'accounts'
-    And request body
-    When method post
-    Then status 201
-    And match response.status == 'ACTIVE_BASIC'
-    And match response.balanceCents == 0
-    And match response.walletId == '#string'
-    And match response.firstNames == 'Ana María'
-    And match response !contains { password: '#notnull' }
-    And match karate.toString(response) !contains 'S3cret!pass'
-
-    Given path 'v1', 'onboarding', 'sessions', s.sid, 'steps'
-    And request { step: 'LANDING_VISIBLE' }
+  @boundary @positive @KAR-U02a
+  Scenario Outline: KAR-U02a Usuario válido en el límite: <username>
+    Given path 'usernames', 'availability-checks'
+    And request { username: '<username>' }
     When method post
     Then status 200
-    And match response.completedSteps == ['PERSONAL_DATA_COMPLETED', 'ACCOUNT_CREATED', 'LANDING_VISIBLE']
-    And match response.completed == true
-    And match response.endedAt == '#? isIso(_)'
-    And match response.durationMs == '#? _ >= 0'
+    And match response.username == '<username>'
+    And match response.available == true
 
-  @TC-API-41 @edge
-  Scenario: TC-API-41 Un onboardingSessionId inexistente no impide crear la cuenta
-    * def body = validAccount
-    * set body.username = uniqueUser()
-    * set body.onboardingSessionId = newUuid()
-    Given path 'v1', 'accounts'
-    And request body
+    Examples:
+      | username             |
+      | a                    |
+      | abcdefghij0123456789 |
+      | a_b.c-1              |
+
+  @negative @boundary @KAR-U02b
+  Scenario Outline: KAR-U02b Usuario inválido: <username> -> <issue>
+    Given path 'usernames', 'availability-checks'
+    And request { username: '<username>' }
     When method post
-    Then status 201
-    And match response.status == 'ACTIVE_BASIC'
+    Then status 400
+    And match response.code == 'VALIDATION_ERROR'
+    And match response.details[0] == { field: 'username', issue: '<issue>' }
+    And assert karate.pretty(response).indexOf('<username>') == -1
+
+    Examples:
+      | username              | issue            |
+      | con espacio           | INVALID_USERNAME |
+      | 1234                  | INVALID_USERNAME |
+      | abcdefghij01234567890 | TOO_LONG         |
+
+  @negative @boundary @KAR-U02c
+  Scenario: KAR-U02c Usuario vacío
+    Given path 'usernames', 'availability-checks'
+    And request { username: '' }
+    When method post
+    Then status 400
+    And match response.details[0] == { field: 'username', issue: 'TOO_SHORT' }
+
+  @negative @KAR-U03
+  Scenario: KAR-U03 Usuario ausente
+    Given path 'usernames', 'availability-checks'
+    And request { names: 'Juan' }
+    When method post
+    Then status 400
+    And match response.details[0] == { field: 'username', issue: 'REQUIRED' }
+
+  @negative @boundary @KAR-U04
+  Scenario Outline: KAR-U04 Nombres inválidos -> <issue>
+    * def u = uniqueUsername()
+    Given path 'usernames', 'availability-checks'
+    And request { username: '#(u)', names: '<names>' }
+    When method post
+    Then status 400
+    And match response.details[0] == { field: 'names', issue: '<issue>' }
+
+    Examples:
+      | names                           | issue              |
+      | Juan1                           | INVALID_CHARACTERS |
+      | Abcdefghijklmnopqrstuvwxyzabcde | TOO_LONG           |
+
+  @negative @boundary @KAR-U05
+  Scenario Outline: KAR-U05 Apellido paterno inválido -> <issue>
+    * def u = uniqueUsername()
+    Given path 'usernames', 'availability-checks'
+    And request { username: '#(u)', paternal_surname: '<surname>' }
+    When method post
+    Then status 400
+    And match response.details[0] == { field: 'paternal_surname', issue: '<issue>' }
+
+    Examples:
+      | surname                | issue              |
+      | Pe rez                 | INVALID_CHARACTERS |
+      | Abcdefghijklmnopqrstu  | TOO_LONG           |
+
+  @positive @boundary @KAR-U06
+  Scenario: KAR-U06 Nombres con tilde y espacio, y apellidos en el límite
+    * def u = uniqueUsername()
+    Given path 'usernames', 'availability-checks'
+    And request { username: '#(u)', names: 'José María', paternal_surname: 'Abcdefghijklmnopqrst', maternal_surname: 'Rojas' }
+    When method post
+    Then status 200
+    And match response.available == true
+
+  @wallet @positive @KAR-U07
+  Scenario: KAR-U07 Usuario no disponible (sin distinguir mayúsculas) devuelve sugerencias sin símbolos
+    * def sess = call read('helpers/start-session.feature')
+    * def taken = uniqueUsername()
+    * def reg = call read('helpers/register-user.feature') { sessionId: '#(sess.sessionId)', username: '#(taken)' }
+    * match reg.responseStatus == 201
+    * def requested = taken.toUpperCase()
+    Given path 'usernames', 'availability-checks'
+    And request { username: '#(requested)', names: 'Juan Carlos', paternal_surname: 'Perez', maternal_surname: 'Rojas' }
+    When method post
+    Then status 200
+    And match response.available == false
+    And assert karate.sizeOf(response.suggestions) >= 1 && karate.sizeOf(response.suggestions) <= 5
+    And match each response.suggestions == '#regex [A-Za-z0-9]{1,20}'
+    And assert distinctCount(response.suggestions) == karate.sizeOf(response.suggestions)
+    * def same = karate.filter(response.suggestions, function(s){ return s.toLowerCase() == taken.toLowerCase() })
+    * assert karate.sizeOf(same) == 0
+```
+
+### `qa/karate/features/registration-metrics.feature`
+
+```gherkin
+@CA-01 @CA-01.b
+Feature: CA-01.b/c - Registro del tiempo y de los pasos completados al finalizar el registro
+
+  Background:
+    * url baseUrl
+    * def System = Java.type('java.lang.System')
+    * def OffsetDateTime = Java.type('java.time.OffsetDateTime')
+    * def epochMs = function(s) { return OffsetDateTime.parse(s).toInstant().toEpochMilli(); }
+
+  @wallet @positive @KAR-M01
+  Scenario: KAR-M01 El registro devuelve métricas coherentes con la sesión y los pasos
+    * def t0 = System.currentTimeMillis()
+    * def sess = call read('helpers/start-session.feature')
+    * def sid = sess.sessionId
+    Given path 'onboarding', 'sessions', sid, 'steps'
+    And request { step: 'NAMES' }
+    When method post
+    Then status 200
+    Given path 'onboarding', 'sessions', sid, 'steps'
+    And request { step: 'USERNAME' }
+    When method post
+    Then status 200
+    * def reg = call read('helpers/register-user.feature') { sessionId: '#(sid)' }
+    * def t1 = System.currentTimeMillis()
+    * match reg.responseStatus == 201
+    * def m = reg.response.registration_metrics
+    * match m ==
+    """
+    {
+      session_id: '#(sid)',
+      started_at: '#string',
+      completed_at: '#string',
+      duration_ms: '#number? _ >= 0',
+      completed_steps: ['NAMES', 'USERNAME']
+    }
+    """
+    * match m.started_at == sess.startedAt
+    * def startedMs = epochMs(m.started_at)
+    * def completedMs = epochMs(m.completed_at)
+    * assert completedMs >= startedMs
+    * assert Math.abs((completedMs - startedMs) - m.duration_ms) <= 2
+    * assert m.duration_ms <= (t1 - t0) + 100
+    * assert karate.pretty(reg.response).indexOf(reg.pw) == -1
+
+  @wallet @boundary @KAR-M02
+  Scenario: KAR-M02 Registro sin pasos previos devuelve completed_steps vacío
+    * def sess = call read('helpers/start-session.feature')
+    * def reg = call read('helpers/register-user.feature') { sessionId: '#(sess.sessionId)' }
+    * match reg.responseStatus == 201
+    * match reg.response.registration_metrics.completed_steps == []
+    * match reg.response.registration_metrics.duration_ms == '#number? _ >= 0'
+
+  @wallet @negative @KAR-M03
+  Scenario: KAR-M03 No se puede registrar dos veces con la misma sesión
+    * def sess = call read('helpers/start-session.feature')
+    * def first = call read('helpers/register-user.feature') { sessionId: '#(sess.sessionId)' }
+    * match first.responseStatus == 201
+    * def second = call read('helpers/register-user.feature') { sessionId: '#(sess.sessionId)' }
+    * match second.responseStatus == 409
+    * match second.response.code == 'SESSION_ALREADY_COMPLETED'
+
+  @negative @KAR-M04
+  Scenario: KAR-M04 Un registro rechazado por contraseña débil no cierra la sesión ni llama al Wallet
+    * def sess = call read('helpers/start-session.feature')
+    * def weak = weakPassword()
+    * def reg = call read('helpers/register-user.feature') { sessionId: '#(sess.sessionId)', overrides: { password: '#(weak)' } }
+    * match reg.responseStatus == 400
+    * match reg.response.code == 'VALIDATION_ERROR'
+    * match reg.response.details[0] == { field: 'password', issue: 'PASSWORD_WEAK' }
+    * assert karate.pretty(reg.response).indexOf(weak) == -1
+    Given path 'onboarding', 'sessions', sess.sessionId, 'steps'
+    And request { step: 'NAMES' }
+    When method post
+    Then status 200
+    And match response.status == 'OPEN'
+
+  @negative @boundary @KAR-M05
+  Scenario: KAR-M05 Contraseña demasiado corta
+    * def sess = call read('helpers/start-session.feature')
+    * def shortPw = shortPassword()
+    * def reg = call read('helpers/register-user.feature') { sessionId: '#(sess.sessionId)', overrides: { password: '#(shortPw)' } }
+    * match reg.responseStatus == 400
+    * match reg.response.details[0].field == 'password'
+    * match reg.response.details[0].issue == 'TOO_SHORT'
+    * assert karate.pretty(reg.response).indexOf(shortPw) == -1
+
+  @negative @KAR-M06
+  Scenario: KAR-M06 Registro con sesión inexistente devuelve 404
+    * def reg = call read('helpers/register-user.feature') { sessionId: '#(unknownUuid)' }
+    * match reg.responseStatus == 404
+    * match reg.response.code == 'NOT_FOUND'
+
+  @negative @KAR-M07
+  Scenario: KAR-M07 Cuerpo vacío devuelve 400 con campos REQUIRED
+    Given path 'users'
+    And request {}
+    When method post
+    Then status 400
+    And match response.code == 'VALIDATION_ERROR'
+    And match each response.details contains { issue: 'REQUIRED' }
+
+  @negative @KAR-M08
+  Scenario: KAR-M08 session_id con formato inválido en el cuerpo
+    * def reg = call read('helpers/register-user.feature') { sessionId: 'no-es-uuid' }
+    * match reg.responseStatus == 400
+    * match reg.response.details[0] == { field: 'session_id', issue: 'INVALID_UUID' }
 ```
 
 ---
 
-# 3. Selenium (UI e integración UI+API)
+## 3. Selenium (Python + pytest)
 
-El proyecto no recibió especificación de frontend (G-01). Los selectores y la URL **no se inventan**: se leen de `locators.json`, y las pruebas se omiten mientras contenga `PENDIENTE`.
-
-### `qa/selenium/requirements-qa.txt`
+### `qa/selenium/requirements-e2e.txt`
 
 ```text
-selenium>=4.20
-pytest>=8.0
-httpx>=0.27
+selenium>=4.10,<5
 ```
 
-### `qa/selenium/pytest.ini`
+### `qa/selenium/locators.json`
 
-```ini
-[pytest]
-addopts = -ra
-markers =
-    ui: pruebas de interfaz (requieren locators.json completo)
-    integration: pruebas UI+API
-```
-
-### `qa/selenium/locators.example.json`
-
-Copiar a `locators.json` y reemplazar cada `PENDIENTE` con datos reales del frontend. `by` admite: `css`, `xpath`, `id`, `name`.
+Todos los valores están pendientes de completar con selectores CSS reales (P-01). Con `null` las pruebas correspondientes se saltan con mensaje PENDIENTE.
 
 ```json
 {
-  "onboarding_url": "PENDIENTE",
-  "onboarding_screen": { "by": "PENDIENTE", "value": "PENDIENTE" },
-  "continue_button": { "by": "PENDIENTE", "value": "PENDIENTE" },
-  "fields": {
-    "first_names": {
-      "input": { "by": "PENDIENTE", "value": "PENDIENTE" },
-      "feedback": { "by": "PENDIENTE", "value": "PENDIENTE" }
-    },
-    "paternal_surname": {
-      "input": { "by": "PENDIENTE", "value": "PENDIENTE" },
-      "feedback": { "by": "PENDIENTE", "value": "PENDIENTE" }
-    },
-    "maternal_surname": {
-      "input": { "by": "PENDIENTE", "value": "PENDIENTE" },
-      "feedback": { "by": "PENDIENTE", "value": "PENDIENTE" }
-    },
-    "username": {
-      "input": { "by": "PENDIENTE", "value": "PENDIENTE" },
-      "feedback": { "by": "PENDIENTE", "value": "PENDIENTE" }
-    },
-    "password": {
-      "input": { "by": "PENDIENTE", "value": "PENDIENTE" },
-      "feedback": { "by": "PENDIENTE", "value": "PENDIENTE" }
-    }
-  }
+  "_comment": "PENDIENTE P-01: completar con selectores CSS reales del frontend Angular (no se conocen: solo se recibió la lista de archivos). null = prueba omitida.",
+  "onboarding_screen_marker": null,
+  "names_input": null,
+  "names_feedback": null,
+  "paternal_surname_input": null,
+  "paternal_surname_feedback": null,
+  "maternal_surname_input": null,
+  "maternal_surname_feedback": null,
+  "username_input": null,
+  "username_feedback": null
 }
-```
-
-### `qa/selenium/support.py`
-
-```python
-"""Utilidades de las pruebas UI de CA-01. No contienen selectores ni URLs del frontend."""
-from __future__ import annotations
-
-import json
-import os
-import re
-import time
-from typing import Any, Callable
-from urllib.parse import parse_qs, urlparse
-
-from selenium.webdriver.common.by import By
-
-PENDING = "PENDIENTE"
-BY_MAP = {"css": By.CSS_SELECTOR, "xpath": By.XPATH, "id": By.ID, "name": By.NAME}
-
-# Pasos permitidos por el contrato del backend (schemas.OnboardingStepName).
-STEP_ENUM = {
-    "PERSONAL_DATA_COMPLETED",
-    "CREDENTIALS_COMPLETED",
-    "ACCOUNT_CREATED",
-    "LANDING_VISIBLE",
-}
-SESSIONS_PATH_RE = re.compile(r"/onboarding/sessions$")
-STEPS_PATH_RE = re.compile(r"/onboarding/sessions/([0-9a-fA-F-]{36})/steps$")
-AVAILABILITY_PATH_RE = re.compile(r"/usernames/availability$")
-
-
-def timeout_s() -> float:
-    return float(os.getenv("UI_TIMEOUT_S", "10"))
-
-
-def find_pending(node: Any, path: str = "") -> list[str]:
-    """Devuelve las rutas de claves que todavía valen PENDIENTE."""
-    found: list[str] = []
-    if isinstance(node, dict):
-        for key, value in node.items():
-            found += find_pending(value, f"{path}.{key}" if path else key)
-    elif node == PENDING:
-        found.append(path)
-    return found
-
-
-def by_tuple(spec: dict) -> tuple[str, str]:
-    return BY_MAP[spec["by"]], spec["value"]
-
-
-def locate(driver, spec: dict):
-    return driver.find_element(*by_tuple(spec))
-
-
-class NetworkRecorder:
-    """Acumula las peticiones de red del navegador (Chrome, log 'performance')."""
-
-    def __init__(self, driver) -> None:
-        self._driver = driver
-        self.events: list[dict] = []
-
-    def poll(self) -> None:
-        for entry in self._driver.get_log("performance"):
-            message = json.loads(entry["message"])["message"]
-            if message.get("method") != "Network.requestWillBeSent":
-                continue
-            request = message["params"]["request"]
-            parsed = urlparse(request["url"])
-            self.events.append(
-                {
-                    "method": request["method"],
-                    "url": request["url"],
-                    "path": parsed.path,
-                    "query": parse_qs(parsed.query),
-                    "post_data": request.get("postData"),
-                }
-            )
-
-    def wait_for(self, predicate: Callable[[dict], bool], timeout: float | None = None) -> list[dict]:
-        deadline = time.time() + (timeout if timeout is not None else timeout_s())
-        while True:
-            self.poll()
-            matches = [e for e in self.events if predicate(e)]
-            if matches:
-                return matches
-            if time.time() > deadline:
-                return []
-            time.sleep(0.2)
-
-    def count(self, predicate: Callable[[dict], bool]) -> int:
-        self.poll()
-        return len([e for e in self.events if predicate(e)])
-
-
-def is_session_start(event: dict) -> bool:
-    return event["method"] == "POST" and bool(SESSIONS_PATH_RE.search(event["path"]))
-
-
-def is_step(event: dict) -> bool:
-    return event["method"] == "POST" and bool(STEPS_PATH_RE.search(event["path"]))
 ```
 
 ### `qa/selenium/conftest.py`
 
 ```python
-import json
-import os
-import pathlib
-
-import pytest
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-
-from support import NetworkRecorder, by_tuple, find_pending, timeout_s
-
-
-@pytest.fixture(scope="session")
-def locators():
-    path = pathlib.Path(os.getenv("UI_LOCATORS_FILE", "locators.json"))
-    if not path.exists():
-        pytest.skip(
-            "PENDIENTE: falta locators.json (brecha G-01: no se recibió la especificación del frontend). "
-            "Copiar locators.example.json y completarlo."
-        )
-    data = json.loads(path.read_text(encoding="utf-8"))
-    pending = find_pending(data)
-    if pending:
-        pytest.skip("PENDIENTE: valores sin completar en locators.json: " + ", ".join(pending))
-    return data
-
-
-@pytest.fixture
-def driver(locators):
-    options = Options()
-    if os.getenv("HEADLESS", "true").lower() != "false":
-        options.add_argument("--headless=new")
-    options.add_argument("--window-size=1280,900")
-    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
-    drv = webdriver.Chrome(options=options)
-    yield drv
-    drv.quit()
-
-
-@pytest.fixture
-def onboarding(driver, locators):
-    """Abre la pantalla de onboarding y espera a que sea visible. Devuelve (driver, recorder, locators)."""
-    recorder = NetworkRecorder(driver)
-    driver.get(locators["onboarding_url"])
-    WebDriverWait(driver, timeout_s()).until(
-        EC.visibility_of_element_located(by_tuple(locators["onboarding_screen"]))
-    )
-    return driver, recorder, locators
-```
-
-### `qa/selenium/test_onboarding_ca01_ui.py`
-
-```python
-"""Pruebas UI e integración UI+API para CA-01 (HU 01 Onboarding Wallet).
-
-Las pruebas dependen de locators.json (brecha G-01). Estado de esta suite: NO EJECUTADO.
-"""
+"""Fixtures Selenium para CA-01. Sin valores por defecto inventados: lo desconocido se marca PENDIENTE."""
 from __future__ import annotations
 
 import json
 import os
-import uuid
+import time
+from pathlib import Path
+from typing import Callable, Dict, List, Optional
 
-import httpx
 import pytest
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+
+LOCATORS_FILE = Path(__file__).parent / "locators.json"
+
+
+def _require_env(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        pytest.skip(f"PENDIENTE: variable de entorno {name} no definida")
+    return value
+
+
+class NetLog:
+    """Acumula las peticiones de red observadas por Chrome (log 'performance')."""
+
+    def __init__(self, driver: webdriver.Chrome) -> None:
+        self._driver = driver
+        self.requests: List[Dict[str, Optional[str]]] = []
+
+    def poll(self) -> List[Dict[str, Optional[str]]]:
+        for entry in self._driver.get_log("performance"):
+            try:
+                message = json.loads(entry["message"])["message"]
+            except (ValueError, KeyError):
+                continue
+            if message.get("method") != "Network.requestWillBeSent":
+                continue
+            request = message.get("params", {}).get("request", {})
+            self.requests.append(
+                {
+                    "method": request.get("method"),
+                    "url": request.get("url"),
+                    "post_data": request.get("postData"),
+                }
+            )
+        return self.requests
+
+    def find(self, method: str, url_suffix: str) -> List[Dict[str, Optional[str]]]:
+        self.poll()
+        return [
+            r
+            for r in self.requests
+            if r["method"] == method and (r["url"] or "").split("?")[0].endswith(url_suffix)
+        ]
+
+    def wait_for(
+        self,
+        method: str,
+        url_suffix: str,
+        timeout: float = 5.0,
+        predicate: Optional[Callable[[Dict[str, Optional[str]]], bool]] = None,
+    ) -> List[Dict[str, Optional[str]]]:
+        deadline = time.time() + timeout
+        while True:
+            found = self.find(method, url_suffix)
+            if predicate is not None:
+                found = [r for r in found if predicate(r)]
+            if found or time.time() >= deadline:
+                return found
+            time.sleep(0.2)
+
+
+@pytest.fixture(scope="session")
+def frontend_url() -> str:
+    return _require_env("FRONTEND_URL").rstrip("/")
+
+
+@pytest.fixture(scope="session")
+def onboarding_path() -> str:
+    return os.getenv("ONBOARDING_PATH", "").strip()
+
+
+@pytest.fixture(scope="session")
+def _locators() -> Dict[str, Optional[str]]:
+    data = json.loads(LOCATORS_FILE.read_text(encoding="utf-8"))
+    return {k: v for k, v in data.items() if not k.startswith("_")}
+
+
+@pytest.fixture
+def loc(_locators):
+    def _get(name: str) -> str:
+        value = _locators.get(name)
+        if not value:
+            pytest.skip(f"PENDIENTE: selector '{name}' no definido en qa/selenium/locators.json")
+        return value
+
+    return _get
+
+
+@pytest.fixture
+def driver():
+    options = Options()
+    if os.getenv("E2E_HEADLESS", "true").strip().lower() in {"1", "true", "yes", "on"}:
+        options.add_argument("--headless=new")
+    options.add_argument("--window-size=1280,900")
+    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+    drv = webdriver.Chrome(options=options)
+    try:
+        drv.get_log("performance")  # descarta el buffer inicial
+        yield drv
+    finally:
+        drv.quit()
+
+
+@pytest.fixture
+def net(driver) -> NetLog:
+    return NetLog(driver)
+```
+
+### `qa/selenium/test_ca01_onboarding_ui.py`
+
+```python
+"""CA-01 - Pruebas de interfaz e integración UI->API para el onboarding.
+
+Resultados esperados (no observados). Los selectores están pendientes en locators.json.
+Las aserciones de feedback son estructurales (presencia/cambio), no de texto (P-05).
+"""
+from __future__ import annotations
+
+import json
+import secrets
+
+import pytest
+from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from support import (
-    AVAILABILITY_PATH_RE,
-    STEP_ENUM,
-    STEPS_PATH_RE,
-    is_session_start,
-    is_step,
-    locate,
-    timeout_s,
-)
+WAIT_S = 10
 
-pytestmark = pytest.mark.ui
 
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8080")
+def _open_onboarding(driver, frontend_url, onboarding_path, loc) -> None:
+    marker = loc("onboarding_screen_marker")
+    driver.get(frontend_url + onboarding_path)
+    WebDriverWait(driver, WAIT_S).until(EC.visibility_of_element_located((By.CSS_SELECTOR, marker)))
 
-# (campo, valor válido, valor inválido). Fuente: reglas de CA-02 y esquemas del backend.
-FIELD_CASES = [
-    ("first_names", "Ana María", "Ana123"),
-    ("paternal_surname", "Quispe", "Quispe9"),
-    ("maternal_surname", "Rojas", "Roj@s"),
-    ("username", lambda: "qa" + uuid.uuid4().hex[:10], "12345"),
-    ("password", "S3cret!pass", "Zq9!x"),
+
+def _type(driver, selector: str, value: str) -> None:
+    element = WebDriverWait(driver, WAIT_S).until(EC.visibility_of_element_located((By.CSS_SELECTOR, selector)))
+    element.clear()
+    element.send_keys(value)  # sin enviar el formulario y sin quitar el foco
+
+
+def _feedback(driver, selector: str) -> str:
+    elements = driver.find_elements(By.CSS_SELECTOR, selector)
+    return " ".join(e.text.strip() for e in elements if e.is_displayed()).strip()
+
+
+def _until_feedback(driver, selector: str, predicate, timeout: float = 5.0) -> str:
+    WebDriverWait(driver, timeout).until(lambda d: predicate(_feedback(d, selector)))
+    return _feedback(driver, selector)
+
+
+# ---------------------------------------------------------------------------
+# UI-01 (CA-01.a)
+# ---------------------------------------------------------------------------
+def test_ui01_session_created_when_onboarding_visible(driver, net, frontend_url, onboarding_path, loc):
+    _open_onboarding(driver, frontend_url, onboarding_path, loc)
+    created = net.wait_for("POST", "/onboarding/sessions", timeout=5)
+    assert len(created) == 1, f"Se esperaba 1 POST /onboarding/sessions, se observaron {len(created)}"
+
+
+# ---------------------------------------------------------------------------
+# UI-02 (CA-01.d) validación en vivo
+# ---------------------------------------------------------------------------
+LIVE_CASES = [
+    pytest.param("names", "Juan1", "Juan Carlos", id="names"),
+    pytest.param("paternal_surname", "Pe rez", "Perez", id="paternal_surname"),
+    pytest.param("maternal_surname", "Rojas9", "Rojas", id="maternal_surname"),
+    pytest.param("username", "con espacio", "qa_" + secrets.token_hex(4), id="username"),
 ]
 
 
-def clear_input(element) -> None:
-    # Se simula edición de teclado para disparar los eventos de entrada del campo.
-    element.send_keys(Keys.CONTROL, "a")
-    element.send_keys(Keys.BACKSPACE)
+@pytest.mark.parametrize("field,invalid,valid", LIVE_CASES)
+def test_ui02_live_validation_feedback(driver, frontend_url, onboarding_path, loc, field, invalid, valid):
+    input_sel = loc(f"{field}_input")
+    feedback_sel = loc(f"{field}_feedback")
+    _open_onboarding(driver, frontend_url, onboarding_path, loc)
+
+    _type(driver, input_sel, invalid)
+    invalid_feedback = _until_feedback(driver, feedback_sel, lambda text: text != "")
+    assert invalid_feedback != "", "No se mostró feedback para un valor inválido mientras se escribe"
+
+    _type(driver, input_sel, valid)
+    valid_feedback = _until_feedback(driver, feedback_sel, lambda text: text != invalid_feedback)
+    assert valid_feedback != invalid_feedback, "El feedback no cambió al ingresar un valor válido"
 
 
-def feedback_text(driver, locators, field: str) -> str:
-    return locate(driver, locators["fields"][field]["feedback"]).text.strip()
+# ---------------------------------------------------------------------------
+# UI-03 (CA-01.d) límites de longitud
+# ---------------------------------------------------------------------------
+LENGTH_CASES = [
+    pytest.param("names", 30, id="names-30"),
+    pytest.param("paternal_surname", 20, id="paternal_surname-20"),
+    pytest.param("username", 20, id="username-20"),
+]
 
 
-def fill_valid_form(driver, locators) -> str:
-    """Llena los 5 campos con datos sintéticos válidos. Devuelve el usuario generado."""
-    username = "qa" + uuid.uuid4().hex[:10]
-    values = {
-        "first_names": "Ana María",
-        "paternal_surname": "Quispe",
-        "maternal_surname": "Rojas",
-        "username": username,
-        "password": "S3cret!pass",
-    }
-    for field, value in values.items():
-        locate(driver, locators["fields"][field]["input"]).send_keys(value)
-    return username
+@pytest.mark.parametrize("field,maximum", LENGTH_CASES)
+def test_ui03_length_limit_truncates_or_reports(driver, frontend_url, onboarding_path, loc, field, maximum):
+    input_sel = loc(f"{field}_input")
+    feedback_sel = loc(f"{field}_feedback")
+    _open_onboarding(driver, frontend_url, onboarding_path, loc)
+
+    _type(driver, input_sel, "a" * (maximum + 1))
+    element = driver.find_element(By.CSS_SELECTOR, input_sel)
+
+    def limited_or_reported(d) -> bool:
+        value = d.find_element(By.CSS_SELECTOR, input_sel).get_attribute("value") or ""
+        return len(value) <= maximum or _feedback(d, feedback_sel) != ""
+
+    WebDriverWait(driver, 5).until(limited_or_reported)
+    value = element.get_attribute("value") or ""
+    assert len(value) <= maximum or _feedback(driver, feedback_sel) != ""
 
 
-# ------------------------------------------------------------------ TC-UI-01
-def test_ui_01_session_starts_when_onboarding_screen_is_visible(onboarding):
-    """CA-01-A. Esperado: exactamente un POST .../onboarding/sessions con la pantalla visible."""
-    _, recorder, _ = onboarding
-    matches = recorder.wait_for(is_session_start)
-    assert matches, "No se observó POST .../onboarding/sessions al mostrarse la pantalla"
-    assert recorder.count(is_session_start) == 1, "Se emitió más de una sesión al cargar la pantalla"
+# ---------------------------------------------------------------------------
+# UI-04 (CA-01.c) integración UI -> API: pasos completados
+# ---------------------------------------------------------------------------
+def test_ui04_step_sent_without_typed_values(driver, net, frontend_url, onboarding_path, loc):
+    input_sel = loc("names_input")
+    _open_onboarding(driver, frontend_url, onboarding_path, loc)
+    typed = "Juan Carlos"
+    _type(driver, input_sel, typed)
+    driver.find_element(By.CSS_SELECTOR, input_sel).send_keys(Keys.TAB)  # sale del campo
+
+    sent = net.wait_for("POST", "/steps", timeout=5)
+    if not sent:
+        pytest.fail("No se observó ningún POST .../steps tras completar el campo de nombres "
+                    "(si la UI envía el paso en otro evento, ver P-01)")
+    if any(r["post_data"] is None for r in sent):
+        pytest.skip("INCONCLUSO: Chrome no expuso postData en el log de red")
+
+    bodies = [json.loads(r["post_data"]) for r in sent]
+    assert any(body.get("step") == "NAMES" for body in bodies)
+    for request, body in zip(sent, bodies):
+        assert set(body.keys()) == {"step"}, f"El cuerpo del paso contiene claves extra: {sorted(body.keys())}"
+        assert typed not in request["post_data"]
 
 
-# ------------------------------------------------------------------ TC-UI-02
-def test_ui_02_completed_step_is_sent_to_backend(onboarding):
-    """CA-01-C. Esperado: POST .../sessions/{id}/steps con un step del enum, siempre en la misma sesión."""
-    driver, recorder, locators = onboarding
-    fill_valid_form(driver, locators)
-    locate(driver, locators["continue_button"]).click()
+# ---------------------------------------------------------------------------
+# UI-05 (CA-01.d) integración UI -> API: disponibilidad de usuario
+# ---------------------------------------------------------------------------
+def test_ui05_username_availability_call_and_feedback(driver, net, frontend_url, onboarding_path, loc):
+    input_sel = loc("username_input")
+    feedback_sel = loc("username_feedback")
+    _open_onboarding(driver, frontend_url, onboarding_path, loc)
+    username = "qa" + secrets.token_hex(4)
+    _type(driver, input_sel, username)
 
-    steps = recorder.wait_for(is_step)
-    assert steps, "No se observó ningún POST de paso completado tras continuar"
-    session_ids = set()
-    for event in steps:
-        body = json.loads(event["post_data"] or "{}")
-        assert body.get("step") in STEP_ENUM, f"Paso fuera del contrato: {body}"
-        session_ids.add(STEPS_PATH_RE.search(event["path"]).group(1))
-    assert len(session_ids) == 1, f"Los pasos usaron sesiones distintas: {session_ids}"
-
-
-# ------------------------------------------------------------------ TC-UI-03
-@pytest.mark.parametrize("field,valid,invalid", FIELD_CASES, ids=[c[0] for c in FIELD_CASES])
-def test_ui_03_field_shows_validation_result_while_typing(onboarding, field, valid, invalid):
-    """CA-01-D. Esperado: el resultado aparece sin salir del campo y cambia con un valor válido."""
-    driver, _, locators = onboarding
-    valid_value = valid() if callable(valid) else valid
-    input_el = locate(driver, locators["fields"][field]["input"])
-
-    input_el.send_keys(invalid)
-    WebDriverWait(driver, timeout_s()).until(lambda d: feedback_text(d, locators, field) != "")
-    invalid_text = feedback_text(driver, locators, field)
-    assert driver.switch_to.active_element == input_el, "El resultado debía mostrarse sin salir del campo"
-
-    clear_input(input_el)
-    input_el.send_keys(valid_value)
-    WebDriverWait(driver, timeout_s()).until(lambda d: feedback_text(d, locators, field) != invalid_text)
-
-
-# ------------------------------------------------------------------ TC-UI-04
-def test_ui_04_username_availability_is_checked_while_typing(onboarding):
-    """CA-01-D. Esperado: GET .../usernames/availability?username=<valor> sin otra acción del usuario."""
-    driver, recorder, locators = onboarding
-    username = "qa" + uuid.uuid4().hex[:10]
-    locate(driver, locators["fields"]["username"]["input"]).send_keys(username)
-
-    def matches_username(event: dict) -> bool:
-        return (
-            event["method"] == "GET"
-            and bool(AVAILABILITY_PATH_RE.search(event["path"]))
-            and username in event["query"].get("username", [])
-        )
-
-    assert recorder.wait_for(matches_username), "No se consultó la disponibilidad del usuario al escribir"
-
-
-# ------------------------------------------------------------------ TC-INT-01
-@pytest.mark.integration
-def test_int_01_ui_session_is_tracked_by_backend(onboarding):
-    """CA-01-A/B/C. Usa el sessionId de la UI y cierra la sesión por API."""
-    driver, recorder, locators = onboarding
-    fill_valid_form(driver, locators)
-    locate(driver, locators["continue_button"]).click()
-
-    steps = recorder.wait_for(is_step)
-    assert steps, "La UI no registró ningún paso"
-    session_id = STEPS_PATH_RE.search(steps[0]["path"]).group(1)
-    ui_steps = {json.loads(e["post_data"] or "{}").get("step") for e in steps}
-
-    response = httpx.post(
-        f"{API_BASE_URL}/v1/onboarding/sessions/{session_id}/steps",
-        json={"step": "LANDING_VISIBLE"},
-        timeout=10,
-    )
-    assert response.status_code == 200, response.text
-    data = response.json()
-    assert data["sessionId"] == session_id
-    assert data["completed"] is True
-    assert isinstance(data["durationMs"], int) and data["durationMs"] >= 0
-    assert ui_steps.issubset(set(data["completedSteps"]))
+    sent = net.wait_for("POST", "/usernames/availability-checks", timeout=5)
+    assert sent, "No se observó POST /usernames/availability-checks al escribir el usuario"
+    if any(r["post_data"] is None for r in sent):
+        pytest.skip("INCONCLUSO: Chrome no expuso postData en el log de red")
+    assert any(json.loads(r["post_data"]).get("username") == username for r in sent)
+    assert _until_feedback(driver, feedback_sel, lambda text: text != "") != ""
 ```
 
 ---
 
-## Resumen operativo
+## 4. Notas finales
 
-- **Estado de todas las pruebas: NO EJECUTADO.** No hay resultados observados, y ninguna corrección se marca como verificada.
-- **Karate** (24 pruebas: 20 sin servicio externo y 4 que lo requieren, incluidas las de integración API) se puede ejecutar ya con los comandos de la sección 7.4. Primero hay que levantar el backend y confirmar el humo (sección 7.3).
-- **Selenium** (5 pruebas, incluida 1 de integración UI+API) está **bloqueado** hasta recibir la especificación del frontend (G-01). Mientras tanto se omite con motivo explícito, sin marcarse como pasado.
-- **Pendientes de definición:** G-01 a G-11 (sección 4 del informe), CA-02 a CA-13 sin diseñar, y el contrato completo de `bcp-wallet-mock` para las pruebas que crean cuentas.
+- Faltan por completar P-01 (selectores del frontend), P-02 (contrato del Wallet mock) y P-04 (versión de Karate). Sin ellos, los escenarios `@wallet` y toda la suite Selenium no son ejecutables.
+- Estado de cada prueba: **NO EJECUTADO**. No se declara ninguna prueba como aprobada ni ninguna corrección como verificada.
+- INT-01 (formulario completo desde la UI) queda pendiente por no conocer el frontend.
+- Las rutas, esquemas y códigos HTTP de los escenarios Karate salen de la lectura del código del backend (`routers/`, `schemas/`, `errors.py`). No hay un OpenAPI formal entregado contra el cual compararlos.
