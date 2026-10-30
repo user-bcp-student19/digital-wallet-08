@@ -45,11 +45,11 @@ flowchart TD
     end
 
     %% ===== Herramientas del backend =====
-    subgraph TOOLS["Herramientas del backend crew/dev_loop.py"]
-        DL["run_dev_loop<br/>max 12 iteraciones"]
+    subgraph TOOLS["Herramientas de backend y frontend crew/dev_loop.py"]
+        DL["run_dev_loop<br/>12 iteraciones backend, 20 frontend"]
         FSTOOLS["write_file, read_file, list_files"]
-        RUNTOOLS["run_pytest, run_ruff"]
-        FIN["finish<br/>solo si pytest esta en verde"]
+        RUNTOOLS["backend: run_pytest, run_ruff<br/>frontend: run_npm_install, run_ng_build, run_ng_test"]
+        FIN["finish<br/>solo si los gates estan en verde"]
     end
 
     %% ===== Persistencia y validacion =====
@@ -124,7 +124,7 @@ flowchart TD
 
 - **Entrada:** `main.py` elige proyecto e item con el MCP. `architect.load_issue` lee el issue con `get_feature_from_item`. Ningún agente llama al MCP mientras trabaja.
 - **Agentes:** siete roles en orden, más `data` si `CREWAI_INCLUDE_DATA=true`. Todos usan `CopilotLLM`, que transmite la salida a la terminal.
-- **Herramientas:** solo el backend tiene herramientas, a través de `crew/dev_loop.py`: escribir y leer archivos, ejecutar pytest y ruff, y `finish`.
-- **Código del backend:** se guarda en `openspec/changes/<nombre-del-cambio>/code/backend/` (`app/` y `tests/`).
+- **Herramientas:** backend y frontend usan herramientas a través de `crew/dev_loop.py`: escribir y leer archivos, ejecutar sus gates y `finish`. Backend ejecuta pytest y ruff; frontend ejecuta npm install, `ng build` y `ng test`. El resto de roles responde en texto.
+- **Código:** backend en `openspec/changes/<nombre-del-cambio>/code/backend/` (`app/` y `tests/`); frontend en `code/frontend/`.
 - **Validación:** cada salida pasa por `check_output` y se guarda en el cambio de OpenSpec. Al final se corre `openspec validate`.
 - **HITL:** cada etapa necesita aprobación antes de avanzar. El estado queda en `output/.checkpoint.json`.
