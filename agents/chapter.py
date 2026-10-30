@@ -1,5 +1,6 @@
 """Agente inicial del taller. Mejora sus instrucciones sin cambiar su contrato."""
 from crewai import Agent, Task
+from agents.brief import feature_brief
 from crew.llm_config import llm
 
 KEY = 'chapter'
@@ -22,7 +23,7 @@ agent = Agent(role='Chapter de Ingenieria de Software',
 
 
 def build_task(feature: dict) -> Task:
-    return Task(description=INSTRUCTIONS + "\nFeature: " + str(feature.get("title", ""))
+    return Task(description=INSTRUCTIONS + feature_brief(feature)
                 + "\n" + str(feature.get("description", ""))
                 + "\n" + str(feature.get("acceptance_criteria", [])),
                 expected_output="""Un archivo Markdown para guardar como chapter_review.md, con esta estructura:

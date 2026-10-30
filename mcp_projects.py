@@ -14,7 +14,7 @@ import json
 import threading
 import requests
 
-_URL     = os.getenv("PROJECTS_MCP_URL",     "http://localhost:8081")
+_URL     = os.getenv("PROJECTS_MCP_URL",     "http://localhost:8081").rstrip("/").removesuffix("/mcp")
 _KEY     = os.getenv("PROJECTS_MCP_API_KEY", "")
 
 _rpc_id       = 0

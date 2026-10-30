@@ -1,5 +1,6 @@
 """Agente inicial del taller. Mejora sus instrucciones sin cambiar su contrato."""
 from crewai import Agent, Task
+from agents.brief import feature_brief
 from crew.llm_config import llm
 
 KEY = 'security'
@@ -20,7 +21,7 @@ agent = Agent(role='Analista Senior de Seguridad de Aplicaciones.',
 
 
 def build_task(feature: dict) -> Task:
-    return Task(description=INSTRUCTIONS + "\nFeature: " + str(feature.get("title", ""))
+    return Task(description=INSTRUCTIONS + feature_brief(feature)
                 + "\n" + str(feature.get("description", ""))
                 + "\n" + str(feature.get("acceptance_criteria", [])),
                 expected_output='Informe Markdown security_report.md con estas secciones: 1 Resumen ejecutivo y alcance revisado. 2 Hallazgos, ordenados por severidad; para cada uno: ID, severidad, confianza (1–10), categoría, archivo y línea, evidencia, escenario, impacto y corrección recomendada. 3 Comprobaciones, con comando o procedimiento y estado: ejecutada, no ejecutada o pendiente. 4 Limitaciones y preguntas abiertas. 5 Conclusión, que indique qué quedó cubierto y qué no. Si no hay hallazgos sustentados, indícalo expresamente y enumera el alcance y las limitaciones. No inventes resultados ni incluyas valores de secretos.', 

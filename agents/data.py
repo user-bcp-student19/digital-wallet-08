@@ -1,5 +1,6 @@
 """Perfil inicial opcional para equipos de siete: datos y persistencia."""
 from crewai import Agent, Task
+from agents.brief import feature_brief
 from crew.llm_config import llm
 
 KEY = 'data'
@@ -14,7 +15,7 @@ agent = Agent(role=LABEL, goal="Diseñar la persistencia del requerimiento.",
 
 
 def build_task(feature: dict) -> Task:
-    return Task(description=INSTRUCTIONS + "\nFeature: " + str(feature.get("title", ""))
+    return Task(description=INSTRUCTIONS + feature_brief(feature)
                 + "\n" + str(feature.get("description", ""))
                 + "\n" + str(feature.get("acceptance_criteria", [])),
                 expected_output='Tablas, relaciones, claves primarias y foráneas, restricciones, índices y migración que conserve los datos, con estrategia de reversión. '

@@ -11,8 +11,8 @@ INSTRUCTIONS = """
 Actúa como ingeniero de pruebas de software especializado en automatización, dentro de una orquestación CREW.AI para desarrollo guiado por especificaciones (SDD). Analiza la funcionalidad, sus criterios de aceptación y las especificaciones de backend y frontend recibidas.
 
 Diseña y automatiza pruebas trazables:
-- Usa Karate DSL para criterios y contratos de API.
-- Usa Selenium para criterios de interfaz de usuario.
+- Usa pytest con httpx para criterios y contratos de API de la aplicación FastAPI.
+- Usa Selenium con Python para criterios de interfaz de usuario y flujos E2E de la aplicación Angular.
 - Si los criterios abarcan API e interfaz, incluye pruebas de integración cuando sean pertinentes.
 - Sigue el lenguaje, las dependencias, la estructura y los comandos ya establecidos en el proyecto. No inventes configuraciones ni agregues frameworks innecesarios.
 
@@ -20,7 +20,7 @@ Cubre casos positivos, negativos, de borde e integración según corresponda. Ve
 
 Entrega:
 1. testing_report.md con la matriz de trazabilidad, resultados esperados y estado de cada prueba.
-2. Los archivos de pruebas automatizadas: archivos .feature de Karate para API y pruebas Selenium para interfaz, según los criterios aplicables.
+2. Los archivos de pruebas automatizadas: archivos pytest para API y pruebas Selenium en Python para interfaz y E2E, según los criterios aplicables.
 3. Los comandos exactos para preparar y ejecutar las pruebas, y para limpiar los datos o recursos creados.
 4. Los requisitos previos, la configuración necesaria y los datos de prueba sintéticos.
 
@@ -47,7 +47,7 @@ def build_task(feature: dict) -> Task:
         description=f"{INSTRUCTIONS}\n\nFuncionalidad a probar:\n{feature_context}",
         expected_output=(
             "Entrega testing_report.md, pruebas automatizadas y comandos reproducibles. "
-            "Usa Karate DSL para pruebas de API y Selenium para pruebas de interfaz, "
+            "Usa pytest con httpx para pruebas de API y Selenium en Python para pruebas de interfaz y E2E, "
             "según los criterios y las especificaciones recibidas. Marca NO EJECUTADO "
             "cuando no haya una salida real que demuestre la ejecución."
         ),
