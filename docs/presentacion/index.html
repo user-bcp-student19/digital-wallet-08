@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orquestación de agentes SDD con CrewAI</title>
+<style>
+  :root {
+    --azul: #1f3a5f;
+    --acento: #2e7d9a;
+    --fondo: #ffffff;
+    --texto: #1d2733;
+    --suave: #eef4f8;
+    --alerta: #fff3e0;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: "Segoe UI", Roboto, Arial, sans-serif; color: var(--texto); background: #0f1b2a; overflow: hidden; }
+  .deck { position: relative; width: 100vw; height: 100vh; }
+  .slide {
+    position: absolute; inset: 0; margin: auto;
+    width: min(96vw, 177.7vh); height: min(54vw, 96vh);
+    background: var(--fondo); padding: 48px 64px; overflow: hidden;
+    display: none; flex-direction: column;
+  }
+  .slide.activa { display: flex; }
+  .slide.portada { background: linear-gradient(135deg, var(--azul), var(--acento)); color: #fff; justify-content: center; }
+  h1 { color: var(--azul); font-size: 40px; margin: 0 0 18px; }
+  .portada h1 { color: #fff; font-size: 56px; }
+  .portada p { font-size: 24px; margin: 6px 0; opacity: .95; }
+  ul { font-size: 24px; line-height: 1.5; margin: 0; padding-left: 28px; }
+  li { margin-bottom: 10px; }
+  .pie { position: absolute; bottom: 18px; right: 40px; font-size: 14px; color: #6b7a8c; }
+  .imagen { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  .imagen img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  table { border-collapse: collapse; width: 100%; font-size: 17px; }
+  th, td { border: 1px solid #cfd8e3; padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: var(--azul); color: #fff; }
+  tr:nth-child(even) td { background: var(--suave); }
+  .nota { background: var(--alerta); border-left: 6px solid #f0a040; padding: 12px 18px; font-size: 20px; margin-top: 18px; border-radius: 4px; }
+  .columnas { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .tarjeta { background: var(--suave); border-radius: 10px; padding: 18px 22px; }
+  .tarjeta h3 { margin: 0 0 10px; color: var(--azul); font-size: 22px; }
+  .tarjeta p, .tarjeta li { font-size: 18px; }
+  .mermaid { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+  .mermaid svg { width: auto !important; max-width: 100% !important; height: auto !important; max-height: calc(min(54vw, 96vh) * 0.56) !important; }
+  code { background: #eef1f5; padding: 1px 6px; border-radius: 4px; font-size: .9em; }
+  .controles { position: fixed; bottom: 12px; left: 16px; color: #cfd8e3; font-size: 14px; z-index: 10; }
+  .progreso { position: fixed; top: 0; left: 0; height: 4px; background: #f0a040; transition: width .3s; z-index: 10; }
+</style>
+</head>
+<body>
+<div class="progreso" id="progreso"></div>
+<div class="deck">
+
+  <!-- 1. Portada -->
+  <section class="slide portada activa">
+    <h1>Orquestación de agentes SDD con CrewAI</h1>
+    <p>Agentes, herramientas, MCP y validación humana</p>
+    <p>Proyecto Digital Wallet · hu-02 como caso de referencia</p>
+  </section>
+
+  <!-- 2. Objetivo -->
+  <section class="slide">
+    <h1>Objetivo</h1>
+    <ul>
+      <li>Convertir un issue de GitHub Projects en una especificación, código y pruebas, siguiendo <b>Spec-Driven Development (SDD)</b>.</li>
+      <li>Usar <b>agentes CrewAI</b> especializados por rol: especificación, arquitectura, backend, frontend, pruebas, seguridad y revisión final.</li>
+      <li><b>Una persona aprueba cada salida</b> antes de que el siguiente rol empiece.</li>
+      <li>Todo entregable queda como <b>archivo en el repositorio</b>, para revisarlo y versionarlo.</li>
+    </ul>
+    <div class="pie">2 / 11</div>
+  </section>
+
+  <!-- 3. Flujo -->
+  <section class="slide">
+    <h1>Flujo de punta a punta</h1>
+    <div class="imagen"><img src="pipeline-sdd.png" alt="Pipeline SDD de 8 pasos con aprobación humana"></div>
+    <div class="pie">3 / 11</div>
+  </section>
+
+  <!-- 4. Agentes -->
+  <section class="slide">
+    <h1>Agentes y responsabilidades</h1>
+    <table>
+      <tr><th>Rol</th><th>Qué produce</th><th>Herramientas</th></tr>
+      <tr><td>specifier</td><td>Propuesta y specs de OpenSpec</td><td>Texto</td></tr>
+      <tr><td>architect</td><td>Diseño, contratos OpenAPI y tareas. Lee el issue por MCP</td><td>Lectura del issue</td></tr>
+      <tr><td>data (opcional)</td><td>Modelo de datos y SQL propuesto</td><td>Texto</td></tr>
+      <tr><td>backend</td><td>API FastAPI y pruebas</td><td>Escribir, leer, listar, pytest, ruff, finish</td></tr>
+      <tr><td>frontend</td><td>Aplicación Angular</td><td>Escribir, leer, listar, npm install, ng build, ng test, finish</td></tr>
+      <tr><td>testing</td><td>Pruebas de API y E2E</td><td>Texto</td></tr>
+      <tr><td>security</td><td>Hallazgos priorizados con evidencia</td><td>Texto</td></tr>
+      <tr><td>chapter</td><td>Veredicto final: APROBADO o RECHAZADO</td><td>Texto</td></tr>
+    </table>
+    <div class="pie">4 / 11</div>
+  </section>
+
+  <!-- 5. SDD con OpenSpec -->
+  <section class="slide">
+    <h1>SDD con OpenSpec</h1>
+    <div class="columnas">
+      <div class="tarjeta">
+        <h3>Qué es</h3>
+        <p>Cada funcionalidad es un <i>cambio</i> en <code>openspec/changes/&lt;feature&gt;/</code>, con propuesta, specs, diseño y tareas.</p>
+      </div>
+      <div class="tarjeta">
+        <h3>Qué controla</h3>
+        <ul>
+          <li><code>check_output</code> valida cada salida por rol.</li>
+          <li><code>openspec validate</code> corre al final.</li>
+          <li>Una tarea se marca como terminada solo si sus compuertas están en verde.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="nota">Hoy los fallos de <code>openspec validate</code> son advertencias: no bloquean la aprobación.</div>
+    <div class="pie">5 / 11</div>
+  </section>
+
+  <!-- 6. MCP -->
+  <section class="slide">
+    <h1>Integración con GitHub Projects (MCP)</h1>
+    <ul>
+      <li><code>mcp_projects.py</code> consulta el servidor MCP por HTTP/SSE usando <code>PROJECTS_MCP_URL</code>.</li>
+      <li>Funciones: <code>list_projects</code>, <code>list_project_items</code> y <code>get_feature_from_item</code>.</li>
+      <li><code>main.py</code> pide elegir proyecto e item; esa elección también es un paso aprobable.</li>
+      <li><b>Solo el architect lee el issue.</b> Los demás agentes no llaman al MCP.</li>
+    </ul>
+    <div class="pie">6 / 11</div>
+  </section>
+
+  <!-- 7. Herramientas -->
+  <section class="slide">
+    <h1>Herramientas de backend y frontend</h1>
+    <div class="columnas">
+      <div class="tarjeta">
+        <h3>Bucle de retroalimentación</h3>
+        <ul>
+          <li>El agente responde con <code>&lt;&lt;&lt;TOOL nombre argumento&gt;&gt;&gt;</code>.</li>
+          <li>Límites: 12 iteraciones (backend), 20 (frontend), 20 acciones por turno, 200 KB por archivo.</li>
+          <li><code>finish</code> solo se acepta con compuertas en verde.</li>
+        </ul>
+      </div>
+      <div class="tarjeta">
+        <h3>Compuertas</h3>
+        <ul>
+          <li><b>Backend:</b> <code>pytest</code>.</li>
+          <li><b>Frontend:</b> <code>ng build</code> y <code>ng test</code> (ChromeHeadless).</li>
+        </ul>
+      </div>
+    </div>
+    <div class="nota">Riesgo conocido: el código generado se ejecuta en el host, sin contenedor ni entorno aislado. Las variables con TOKEN, SECRET, PASSWORD o API_KEY se eliminan antes de ejecutar comandos.</div>
+    <div class="pie">7 / 11</div>
+  </section>
+
+  <!-- 8. HITL -->
+  <section class="slide">
+    <h1>Validación humana y reanudación</h1>
+    <div class="columnas">
+      <div class="tarjeta">
+        <h3>En cada etapa</h3>
+        <ul>
+          <li><b>s</b>: aprobar y continuar.</li>
+          <li><b>r</b>: reintentar con feedback.</li>
+          <li><b>n</b>: abortar.</li>
+        </ul>
+      </div>
+      <div class="tarjeta">
+        <h3>Reanudar</h3>
+        <ul>
+          <li><code>output/.checkpoint.json</code> guarda el estado.</li>
+          <li>Los pasos aprobados se reutilizan al volver a correr.</li>
+          <li><code>python main.py --redo &lt;paso&gt;</code> regenera ese paso y los siguientes.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="pie">8 / 11</div>
+  </section>
+
+  <!-- 9. Arquitectura -->
+  <section class="slide">
+    <h1>Arquitectura</h1>
+    <div class="imagen"><img src="arquitectura-agentes.png" alt="Arquitectura de agentes, herramientas y MCP"></div>
+    <div class="pie">9 / 11</div>
+  </section>
+
+  <!-- 10. Flujo simplificado (Mermaid) -->
+  <section class="slide">
+    <h1>Flujo simplificado</h1>
+    <div class="imagen">
+      <pre class="mermaid">
+flowchart TD
+    GH["GitHub Projects<br/>issue"] --> MCP["Servidor MCP<br/>mcp_projects.py"]
+    MCP --> M["main.py<br/>aprobación humana"]
+    M --> AG["Agentes CrewAI<br/>specifier · architect · backend<br/>frontend · testing · security · chapter"]
+    AG --> LLM["CopilotLLM<br/>GitHub Copilot SDK"]
+    AG --> DL["Herramientas<br/>escribir · leer · pytest · ng build · ng test"]
+    DL --> CODE[("code/ backend y frontend")]
+    AG --> REP[("reports/ y tasks.md")]
+    M --> CK[("output/.checkpoint.json")]
+      </pre>
+    </div>
+    <div class="pie">10 / 11</div>
+  </section>
+
+  <!-- 11. Cierre -->
+  <section class="slide">
+    <h1>Limitaciones y siguientes pasos</h1>
+    <ul>
+      <li>El código generado corre en el host: evaluar contenedor o entorno virtual aislado.</li>
+      <li><code>openspec validate</code> aún no bloquea la aprobación.</li>
+      <li><code>client/openapi/</code> es referenciado por los prompts pero no existe en el repositorio.</li>
+      <li>Los informes de pruebas guardan solo la última ejecución de compuertas.</li>
+    </ul>
+    <div class="nota">Documentación completa: <code>docs/arquitectura.md</code> (diagrama detallado) y <code>docs/presentacion/crew-sdd-solucion.pptx</code>.</div>
+    <div class="pie">11 / 11</div>
+  </section>
+</div>
+<div class="controles">← → para navegar · F para pantalla completa</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: "default", themeVariables: { fontSize: "18px" }, flowchart: { useMaxWidth: true, htmlLabels: true } });
+  const slides = Array.from(document.querySelectorAll(".slide"));
+  let actual = 0;
+  let renderizado = false;
+
+  async function renderMermaid() {
+    if (renderizado) return;
+    renderizado = true;
+    await mermaid.run({ querySelector: ".mermaid" });
+  }
+
+  function mostrar(i) {
+    actual = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, k) => s.classList.toggle("activa", k === actual));
+    document.getElementById("progreso").style.width = ((actual + 1) / slides.length * 100) + "%";
+    if (slides[actual].querySelector(".mermaid")) renderMermaid();
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") mostrar(actual + 1);
+    if (e.key === "ArrowLeft" || e.key === "PageUp") mostrar(actual - 1);
+    if (e.key === "Home") mostrar(0);
+    if (e.key === "End") mostrar(slides.length - 1);
+    if (e.key === "f" || e.key === "F") {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    }
+  });
+
+  let x0 = null;
+  document.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; });
+  document.addEventListener("touchend", (e) => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    if (Math.abs(dx) > 50) mostrar(actual + (dx < 0 ? 1 : -1));
+    x0 = null;
+  });
+
+  mostrar((parseInt(location.hash.slice(1), 10) || 1) - 1);
+</script>
+</body>
+</html>

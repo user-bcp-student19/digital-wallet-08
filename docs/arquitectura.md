@@ -7,7 +7,7 @@ flowchart TD
         GH["GitHub Projects v2"]
         MCPSRV["Servidor MCP Proyectos<br/>PROJECTS_MCP_URL, endpoint /mcp"]
         COPILOT["GitHub Copilot SDK<br/>modelo COPILOT_MODEL"]
-        OASPEC["client/openapi<br/>contratos externos"]
+        OASPEC["client/openapi<br/>contratos externos (carpeta no presente)"]
     end
 
     %% ===== Orquestador =====
@@ -84,7 +84,7 @@ flowchart TD
     SP -->|"run_role"| CLLM
     AR -->|"run_role"| CLLM
     DA -->|"run_role"| CLLM
-    FE -->|"run_role"| CLLM
+    FE -->|"develop"| DL
     TE -->|"run_role"| CLLM
     SE -->|"run_role"| CLLM
     CH -->|"run_role"| CLLM
@@ -125,6 +125,7 @@ flowchart TD
 - **Entrada:** `main.py` elige proyecto e item con el MCP. `architect.load_issue` lee el issue con `get_feature_from_item`. Ningún agente llama al MCP mientras trabaja.
 - **Agentes:** siete roles en orden, más `data` si `CREWAI_INCLUDE_DATA=true`. Todos usan `CopilotLLM`, que transmite la salida a la terminal.
 - **Herramientas:** backend y frontend usan herramientas a través de `crew/dev_loop.py`: escribir y leer archivos, ejecutar sus gates y `finish`. Backend ejecuta pytest y ruff; frontend ejecuta npm install, `ng build` y `ng test`. El resto de roles responde en texto.
+- **Contratos externos:** los prompts de architect y backend mencionan `client/openapi/`, pero esa carpeta no existe en el repo; el diagrama la muestra con línea punteada para indicarlo.
 - **Código:** backend en `openspec/changes/<nombre-del-cambio>/code/backend/` (`app/` y `tests/`); frontend en `code/frontend/`.
 - **Validación:** cada salida pasa por `check_output` y se guarda en el cambio de OpenSpec. Al final se corre `openspec validate`.
 - **HITL:** cada etapa necesita aprobación antes de avanzar. El estado queda en `output/.checkpoint.json`.
