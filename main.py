@@ -1,8 +1,10 @@
 """Orquestador CrewAI: Arquitecto -> Backend -> Frontend -> QA -> Chapter, con guardrails y HITL."""
 import logging
 import re
+import shutil
 import sys
 import time
+from contextlib import nullcontext
 from pathlib import Path
 from crewai import Crew, Process
 from crewai.types.streaming import StreamChunkType
@@ -14,6 +16,7 @@ from crewai.events.types.tool_usage_events import ToolUsageStartedEvent, ToolUsa
 from crewai.events.types.task_events import TaskStartedEvent, TaskCompletedEvent, TaskFailedEvent
 
 from agents import architect, backend, frontend, testing, chapter
+import qa_runner
 # ── MCP clients ────────────────────────────────────────────────────
 from mcp_projects import (
     list_tools,
@@ -306,6 +309,90 @@ def run_with_hitl(module, feature: dict, context: str, max_attempts: int | None,
     raise SystemExit(f"{module.LABEL}: sin aprobación tras {max_attempts} intentos. Ciclo cerrado.")
 
 
+def ask_choice(prompt: str, valid: set[str]) -> str:
+    """Pide una opción al usuario hasta recibir una válida y la registra en el log."""
+    while True:
+        choice = input(prompt).strip().lower()
+        log.info("Decisión humana: '%s'", choice or "(vacía)")
+        if choice in valid:
+            return choice
+        print("  Entrada inválida.")
+
+
+# ── QA: servicios, Karate, Selenium y aprobación humana ────────────
+def run_qa_stage(feature: dict, context: str, guardrail, backend_dir: Path, frontend_dir: Path) -> None:
+    """Paso 0: el agente genera las pruebas. 1: levanta Backend y Frontend. 2: ejecuta Karate y Selenium.
+    3: pausa para aprobación humana con un resumen. 4: genera output/qa/ e informes/testing.md."""
+    feedback = ""
+
+    def generate() -> dict[str, str]:
+        text = execute(testing.agent, make_task(testing, feature, context + feedback, guardrail))
+        generated = backend.parse_files(text)
+        log.info("QA: %d archivos de prueba generados (%s)", len(generated), ", ".join(sorted(generated)))
+        return generated
+
+    files = generate()
+
+    print("\n===== QA · Paso 1: entorno y servicios =====")
+    checks = qa_runner.preflight(backend_dir, frontend_dir)
+    print(qa_runner.format_preflight(checks))
+    blocked = [c for c in checks if not c.ok and not c.action]
+    skip_reason = ""
+    if blocked:
+        skip_reason = "faltan requisitos: " + "; ".join(f"{c.name} ({c.detail})" for c in blocked)
+        log.error("QA: no se pueden levantar los servicios — %s", skip_reason)
+    else:
+        pending = [c.action for c in checks if not c.ok and c.action]
+        print("\nSe levantarán el Backend (http://localhost:8000) y el Frontend (http://localhost:4200) ejecutando el código generado."
+              + ("\nAcciones previas:\n" + "\n".join(f"  - {a}" for a in pending) if pending else ""))
+        if ask_choice("[s] levantar servicios y ejecutar pruebas  [n] omitir (quedará NO EJECUTADO): ", {"s", "n"}) == "n":
+            skip_reason = "ejecución omitida por el usuario"
+
+    jar, python = None, None
+    if not skip_reason:
+        try:
+            jar = qa_runner.karate_jar() or qa_runner.download_karate()
+        except Exception as exc:
+            log.error("QA: no se pudo obtener Karate: %s", exc)
+        try:
+            python = qa_runner.prepare_selenium_python()
+        except Exception as exc:
+            log.error("QA: no se pudo preparar Selenium: %s", exc)
+
+    with (nullcontext() if skip_reason else qa_runner.Services(backend_dir, frontend_dir)) as services:
+        statuses = services.start() if services else []
+        for status in statuses:
+            print(f"  {'OPERATIVO' if status.ok else 'CON ERROR'}: {status.name} {status.url} — {status.detail}")
+        run = None
+        while True:
+            if run is not None:
+                shutil.rmtree(run.workdir, ignore_errors=True)
+            log.info("QA · Paso 2: ejecutando pruebas automatizadas (Karate y Selenium)")
+            run = qa_runner.run_suites(files, statuses, jar, python, skip_reason)
+
+            print("\n===== QA · Paso 3: resumen preliminar (pendiente de aprobación) =====")
+            print(qa_runner.format_summary(run))
+            choice = ask_choice("\n[s] aprobar y generar reportes  [r] regenerar pruebas con feedback y reejecutar  "
+                                "[x] reejecutar sin cambios  [n] abortar: ", {"s", "r", "x", "n"})
+            if choice == "n":
+                shutil.rmtree(run.workdir, ignore_errors=True)
+                raise SystemExit("QA: abortado por el usuario; no se generaron reportes.")
+            if choice == "r":
+                comment = input("Feedback para el agente: ").strip()
+                feedback = (f"\n\n## Resultados de la ejecución anterior\n{qa_runner.format_summary(run)}"
+                            f"\n\n## Correcciones solicitadas por el humano\n{comment}")
+                files = generate()
+            if choice == "s":
+                break
+
+    log.info("QA · Paso 4: generando output/qa/ e informes/testing.md")
+    written = qa_runner.publish(run, files, DIRS["qa"], DIRS["informes"] / "testing.md", feature,
+                                backend_dir.relative_to(BASE).as_posix(), frontend_dir.relative_to(BASE).as_posix())
+    for path in written:
+        log.info("Guardado: %s", path)
+    log.info("QA: resultado global %s", qa_runner.global_status(run))
+
+
 # ── Main ───────────────────────────────────────────────────────────
 def main():
     print("\n[MCP Proyectos] Autenticando...")
@@ -435,13 +522,22 @@ def main():
     )
     save(DIRS["informes"] / f"{frontend.KEY}.md", frontend_report)
 
-    # 4. QA
+    # 4. QA: genera pruebas Karate/Selenium, levanta los servicios, las ejecuta y pide aprobación humana antes de reportar
     log.info("Inicia QA")
-    qa_text = execute(testing.agent, make_task(testing, feature,
-                      f"\n\n## Contrato y implementación del Backend\n{backend_text}"
-                      f"\n\n## Archivos del Frontend Angular\n" + "\n".join(f"- {p}" for p in sorted(frontend_files))))
-    save(DIRS["qa"] / f"{testing.KEY}.md", qa_text)
-    save(DIRS["informes"] / f"{testing.KEY}.md", qa_text)
+    app_sources = "\n\n".join(
+        f"### {p}\n```python\n{c[:6000]}```" for p, c in sorted(backend_files.items())
+        if p.startswith("app/") and p.endswith(".py"))
+    ui_sources = "\n\n".join(
+        f"### {p}\n```\n{c[:6000]}\n```" for p, c in sorted(frontend_files.items())
+        if p.startswith("src/app/") and p.endswith((".html", ".ts")))
+    qa_context = (
+        f"\n\n## Rutas reales del Backend (http://localhost:8000) — cubre todas con Karate\n{served_list}"
+        f"\n\n## Contrato OpenAPI del API\n```yaml\n{arch_artifacts['openapi.yaml']}\n```"
+        f"\n\n## Código del Backend (modelos y routers, para validar esquemas y errores)\n{app_sources}"
+        f"\n\n## Código del Frontend Angular (http://localhost:4200) — usa SOLO selectores que existan aquí\n{ui_sources}"
+    )
+    qa_guardrail = testing.build_guardrail(served, backend.spec_routes(arch_artifacts["openapi.yaml"]), frontend_files)
+    run_qa_stage(feature, qa_context, qa_guardrail, DIRS["backend"], DIRS["frontend"])
 
     # 5. Chapter (revisión final a partir de los informes)
     log.info("Inicia Chapter")
