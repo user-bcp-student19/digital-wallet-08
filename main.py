@@ -32,6 +32,7 @@ DIRS = {
 }
 OPENAPI_DIR = BASE / "client" / "openapi"
 MAX_BACKEND_ATTEMPTS = 3
+GUARDRAIL_MAX_RETRIES = 50
 
 for d in (OUTPUT, *DIRS.values()):
     d.mkdir(parents=True, exist_ok=True)
@@ -178,6 +179,9 @@ def make_task(module, feature: dict, context: str = "", guardrail=None):
     task = module.build_task(feature)
     task.description += context
     task.guardrail = _logged_guardrail(guardrail or guard_task_output)
+    if guardrail:
+        # Un guardrail específico (p. ej. Mermaid) reintenta hasta cumplirse, no solo 3 veces
+        task.guardrail_max_retries = GUARDRAIL_MAX_RETRIES
     return task
 
 
