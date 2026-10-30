@@ -43,6 +43,12 @@
   .tarjeta p, .tarjeta li { font-size: 18px; }
   .mermaid { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
   .mermaid svg { width: auto !important; max-width: 100% !important; height: auto !important; max-height: calc(min(54vw, 96vh) * 0.56) !important; }
+  .detalle { flex: 1; min-height: 0; overflow: auto; border: 1px solid #cfd8e3; border-radius: 8px; padding: 12px; }
+  .detalle .mermaid { height: auto; }
+  .detalle .mermaid svg { width: 5321px !important; max-width: none !important; max-height: none !important; flex-shrink: 0; }
+  .detalle h1 { font-size: 32px; }
+  .detalle-nota { font-size: 16px; color: #6b7a8c; margin: 0 0 8px; }
+  .lectura li { font-size: 20px; margin-bottom: 12px; }
   code { background: #eef1f5; padding: 1px 6px; border-radius: 4px; font-size: .9em; }
   .controles { position: fixed; bottom: 12px; left: 16px; color: #cfd8e3; font-size: 14px; z-index: 10; }
   .progreso { position: fixed; top: 0; left: 0; height: 4px; background: #f0a040; transition: width .3s; z-index: 10; }
@@ -68,14 +74,14 @@
       <li><b>Una persona aprueba cada salida</b> antes de que el siguiente rol empiece.</li>
       <li>Todo entregable queda como <b>archivo en el repositorio</b>, para revisarlo y versionarlo.</li>
     </ul>
-    <div class="pie">2 / 11</div>
+    <div class="pie">2 / 13</div>
   </section>
 
   <!-- 3. Flujo -->
   <section class="slide">
     <h1>Flujo de punta a punta</h1>
     <div class="imagen"><img src="pipeline-sdd.png" alt="Pipeline SDD de 8 pasos con aprobación humana"></div>
-    <div class="pie">3 / 11</div>
+    <div class="pie">3 / 13</div>
   </section>
 
   <!-- 4. Agentes -->
@@ -92,7 +98,7 @@
       <tr><td>security</td><td>Hallazgos priorizados con evidencia</td><td>Texto</td></tr>
       <tr><td>chapter</td><td>Veredicto final: APROBADO o RECHAZADO</td><td>Texto</td></tr>
     </table>
-    <div class="pie">4 / 11</div>
+    <div class="pie">4 / 13</div>
   </section>
 
   <!-- 5. SDD con OpenSpec -->
@@ -113,7 +119,7 @@
       </div>
     </div>
     <div class="nota">Hoy los fallos de <code>openspec validate</code> son advertencias: no bloquean la aprobación.</div>
-    <div class="pie">5 / 11</div>
+    <div class="pie">5 / 13</div>
   </section>
 
   <!-- 6. MCP -->
@@ -125,7 +131,7 @@
       <li><code>main.py</code> pide elegir proyecto e item; esa elección también es un paso aprobable.</li>
       <li><b>Solo el architect lee el issue.</b> Los demás agentes no llaman al MCP.</li>
     </ul>
-    <div class="pie">6 / 11</div>
+    <div class="pie">6 / 13</div>
   </section>
 
   <!-- 7. Herramientas -->
@@ -149,7 +155,7 @@
       </div>
     </div>
     <div class="nota">Riesgo conocido: el código generado se ejecuta en el host, sin contenedor ni entorno aislado. Las variables con TOKEN, SECRET, PASSWORD o API_KEY se eliminan antes de ejecutar comandos.</div>
-    <div class="pie">7 / 11</div>
+    <div class="pie">7 / 13</div>
   </section>
 
   <!-- 8. HITL -->
@@ -173,14 +179,14 @@
         </ul>
       </div>
     </div>
-    <div class="pie">8 / 11</div>
+    <div class="pie">8 / 13</div>
   </section>
 
   <!-- 9. Arquitectura -->
   <section class="slide">
     <h1>Arquitectura</h1>
     <div class="imagen"><img src="arquitectura-agentes.png" alt="Arquitectura de agentes, herramientas y MCP"></div>
-    <div class="pie">9 / 11</div>
+    <div class="pie">9 / 13</div>
   </section>
 
   <!-- 10. Flujo simplificado (Mermaid) -->
@@ -199,10 +205,153 @@ flowchart TD
     M --> CK[("output/.checkpoint.json")]
       </pre>
     </div>
-    <div class="pie">10 / 11</div>
+    <div class="pie">10 / 13</div>
   </section>
 
-  <!-- 11. Cierre -->
+  <!-- 11. Arquitectura detallada (desde docs/arquitectura.md) -->
+  <section class="slide">
+    <h1>Arquitectura detallada</h1>
+    <p class="detalle-nota">Diagrama completo de docs/arquitectura.md. Desplázate con la rueda del ratón (Shift + rueda para horizontal).</p>
+    <div class="detalle">
+      <pre class="mermaid">
+flowchart TD
+    %% ===== Fuentes externas =====
+    subgraph EXT["Fuentes externas"]
+        GH["GitHub Projects v2"]
+        MCPSRV["Servidor MCP Proyectos<br/>PROJECTS_MCP_URL, endpoint /mcp"]
+        COPILOT["GitHub Copilot SDK<br/>modelo COPILOT_MODEL"]
+        OASPEC["client/openapi<br/>contratos externos (carpeta no presente)"]
+    end
+
+    %% ===== Orquestador =====
+    subgraph ORQ["Orquestador main.py"]
+        MAIN["main.py<br/>flujo HITL por etapa"]
+        WF["crew/workflow.py<br/>ROLES y DATA_ROLES"]
+        GUARD["guard_input<br/>anti prompt injection y redaccion de secretos"]
+        CKPT[("output/.checkpoint.json")]
+        HITL{{"Humano<br/>s aprobar, r reintentar, n abortar"}}
+    end
+
+    %% ===== Cliente MCP =====
+    subgraph MCPC["Cliente MCP mcp_projects.py"]
+        LP["list_projects"]
+        LPI["list_project_items"]
+        GF["get_feature_from_item"]
+    end
+
+    %% ===== LLM =====
+    subgraph LLMS["Capa LLM"]
+        CLLM["CopilotLLM<br/>crew/copilot_llm.py"]
+        RT["lab_copilot/runtime.py<br/>streaming en terminal"]
+    end
+
+    %% ===== Agentes CrewAI =====
+    subgraph AGENTS["Agentes CrewAI, en orden"]
+        SP["1 specifier<br/>OpenSpec proposal y specs"]
+        AR["2 architect<br/>load_issue, diagramas, OpenAPI, tareas"]
+        DA["data<br/>opcional, CREWAI_INCLUDE_DATA"]
+        BE["3 backend<br/>bucle de herramientas"]
+        FE["4 frontend<br/>Angular"]
+        TE["5 testing<br/>pytest API y Selenium E2E"]
+        SE["6 security"]
+        CH["7 chapter"]
+    end
+
+    %% ===== Herramientas del backend =====
+    subgraph TOOLS["Herramientas de backend y frontend crew/dev_loop.py"]
+        DL["run_dev_loop<br/>12 iteraciones backend, 20 frontend"]
+        FSTOOLS["write_file, read_file, list_files"]
+        RUNTOOLS["backend: run_pytest, run_ruff<br/>frontend: run_npm_install, run_ng_build, run_ng_test"]
+        FIN["finish<br/>solo si los gates estan en verde"]
+    end
+
+    %% ===== Persistencia y validacion =====
+    subgraph OUT["Entregables y validacion"]
+        CHG["openspec/changes/feature/<br/>design.md, tasks.md, openapi.yaml, specs, reports"]
+        CODE["openspec/changes/feature/code/backend<br/>app y tests"]
+        OSCLI["OpenSpec CLI<br/>openspec validate"]
+        GUARDOUT["check_output<br/>guardrails por rol"]
+    end
+
+    %% ===== Conexiones =====
+    GH --> MCPSRV
+    MCPSRV --> LP
+    MCPSRV --> LPI
+    MCPSRV --> GF
+    MAIN -->|"elegir proyecto"| LP
+    MAIN -->|"elegir item"| LPI
+    MAIN --> GUARD
+    GUARD --> AR
+    AR -->|"load_issue"| GF
+
+    MAIN --> WF
+    WF --> SP
+    WF --> AR
+    WF --> DA
+    WF --> BE
+    WF --> FE
+    WF --> TE
+    WF --> SE
+    WF --> CH
+
+    SP -->|"run_role"| CLLM
+    AR -->|"run_role"| CLLM
+    DA -->|"run_role"| CLLM
+    FE -->|"develop"| DL
+    TE -->|"run_role"| CLLM
+    SE -->|"run_role"| CLLM
+    CH -->|"run_role"| CLLM
+    BE -->|"develop"| DL
+
+    DL -->|"prompt y respuesta"| CLLM
+    CLLM --> RT
+    RT --> COPILOT
+    AR -.->|"lee contratos"| OASPEC
+    MAIN -.->|"read_openapi"| OASPEC
+
+    DL --> FSTOOLS
+    DL --> RUNTOOLS
+    DL --> FIN
+    FSTOOLS --> CODE
+    RUNTOOLS -->|"python -m pytest y ruff"| CODE
+
+    SP --> CHG
+    AR --> CHG
+    DA --> CHG
+    FE --> CHG
+    TE --> CHG
+    SE --> CHG
+    CH --> CHG
+    BE --> CHG
+    CHG --> GUARDOUT
+    GUARDOUT --> OSCLI
+
+    MAIN --> HITL
+    HITL -->|"r feedback"| MAIN
+    HITL -->|"s aprobado"| CKPT
+    CKPT --> MAIN
+    MAIN -->|"fin del flujo"| OSCLI
+      </pre>
+    </div>
+    <div class="pie">11 / 13</div>
+  </section>
+
+  <!-- 12. Cómo leer la arquitectura -->
+  <section class="slide">
+    <h1>Cómo leer la arquitectura</h1>
+    <ul class="lectura">
+      <li><b>Entrada:</b> <code>main.py</code> elige proyecto e item con el MCP. <code>architect.load_issue</code> lee el issue con <code>get_feature_from_item</code>. Ningún agente llama al MCP mientras trabaja.</li>
+      <li><b>Agentes:</b> siete roles en orden, más <code>data</code> si <code>CREWAI_INCLUDE_DATA=true</code>. Todos usan <code>CopilotLLM</code>, que transmite la salida a la terminal.</li>
+      <li><b>Herramientas:</b> backend y frontend usan herramientas a través de <code>crew/dev_loop.py</code>: escribir y leer archivos, ejecutar sus gates y <code>finish</code>. Backend ejecuta pytest y ruff; frontend ejecuta npm install, <code>ng build</code> y <code>ng test</code>. El resto de roles responde en texto.</li>
+      <li><b>Contratos externos:</b> los prompts de architect y backend mencionan <code>client/openapi/</code>, pero esa carpeta no existe en el repo; el diagrama la muestra con línea punteada para indicarlo.</li>
+      <li><b>Código:</b> backend en <code>openspec/changes/&lt;cambio&gt;/code/backend/</code> (<code>app/</code> y <code>tests/</code>); frontend en <code>code/frontend/</code>.</li>
+      <li><b>Validación:</b> cada salida pasa por <code>check_output</code> y se guarda en el cambio de OpenSpec. Al final se corre <code>openspec validate</code>.</li>
+      <li><b>HITL:</b> cada etapa necesita aprobación antes de avanzar. El estado queda en <code>output/.checkpoint.json</code>.</li>
+    </ul>
+    <div class="pie">12 / 13</div>
+  </section>
+
+  <!-- 13. Cierre -->
   <section class="slide">
     <h1>Limitaciones y siguientes pasos</h1>
     <ul>
@@ -211,8 +360,8 @@ flowchart TD
       <li><code>client/openapi/</code> es referenciado por los prompts pero no existe en el repositorio.</li>
       <li>Los informes de pruebas guardan solo la última ejecución de compuertas.</li>
     </ul>
-    <div class="nota">Documentación completa: <code>docs/arquitectura.md</code> (diagrama detallado) y <code>docs/presentacion/crew-sdd-solucion.pptx</code>.</div>
-    <div class="pie">11 / 11</div>
+    <div class="nota">Documentación completa: <code>docs/arquitectura.md</code> y <code>docs/presentacion/crew-sdd-solucion.pptx</code>.</div>
+    <div class="pie">13 / 13</div>
   </section>
 </div>
 <div class="controles">← → para navegar · F para pantalla completa</div>
