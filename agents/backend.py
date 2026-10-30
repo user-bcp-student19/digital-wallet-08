@@ -20,7 +20,7 @@ agent = Agent(
         llm=llm,
         verbose=True,
         allow_delegation=False,
-        human_input=True,  # Permite revisar el código generado antes de continuar
+        human_input=False,  # Permite revisar el código generado antes de continuar
 )
 
 def build_task(feature: dict, architect_task=None) -> Task:

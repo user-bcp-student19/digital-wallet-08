@@ -17,7 +17,7 @@ agent = Agent(
         llm=llm,
         verbose=True,
         allow_delegation=False,
-        human_input=True,  # Validación humana de flujos de usuario
+        human_input=False,  # Validación humana de flujos de usuario
 )
 
 def build_task(feature: dict, backend_task=None) -> Task:
