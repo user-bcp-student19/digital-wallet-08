@@ -1,8 +1,15 @@
 """Orquestador CrewAI: Arquitecto -> Backend -> Frontend -> QA -> Chapter, con guardrails y HITL."""
 import logging
 import re
+import time
 from pathlib import Path
 from crewai import Crew, Process
+from crewai.types.streaming import StreamChunkType
+from crewai.events import crewai_event_bus
+from crewai.events.types.agent_events import AgentExecutionStartedEvent, AgentExecutionCompletedEvent, AgentExecutionErrorEvent
+from crewai.events.types.llm_events import LLMCallStartedEvent, LLMCallCompletedEvent, LLMCallFailedEvent
+from crewai.events.types.tool_usage_events import ToolUsageStartedEvent, ToolUsageFinishedEvent, ToolUsageErrorEvent
+from crewai.events.types.task_events import TaskStartedEvent, TaskCompletedEvent, TaskFailedEvent
 
 from agents import architect, backend, frontend, testing, chapter
 # ── MCP clients ────────────────────────────────────────────────────
@@ -38,6 +45,94 @@ if not log.handlers:
         log.addHandler(_handler)
     log.setLevel(logging.INFO)
     log.propagate = False
+
+# ── Eventos en vivo de CrewAI ──────────────────────────────────────
+_llm_started: dict = {}
+
+
+def _short(value, limit: int = 300) -> str:
+    text = str(value).replace("\n", " ")
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
+@crewai_event_bus.on(TaskStartedEvent)
+def _on_task_started(source, event):
+    log.info("[TAREA] Tarea iniciada: %s", _short(getattr(event, "task_name", None) or getattr(getattr(event, "task", None), "description", ""), 120))
+
+
+@crewai_event_bus.on(TaskCompletedEvent)
+def _on_task_completed(source, event):
+    log.info("[TAREA] Tarea completada")
+
+
+@crewai_event_bus.on(TaskFailedEvent)
+def _on_task_failed(source, event):
+    log.error("[TAREA] Tarea fallida: %s", _short(getattr(event, "error", "")))
+
+
+@crewai_event_bus.on(AgentExecutionStartedEvent)
+def _on_agent_started(source, event):
+    log.info("[AGENTE] Agente en ejecución: %s", getattr(getattr(event, "agent", None), "role", "?"))
+
+
+@crewai_event_bus.on(AgentExecutionCompletedEvent)
+def _on_agent_completed(source, event):
+    log.info("[AGENTE] Agente terminó: %s", getattr(getattr(event, "agent", None), "role", "?"))
+
+
+@crewai_event_bus.on(AgentExecutionErrorEvent)
+def _on_agent_error(source, event):
+    log.error("[AGENTE] Error del agente: %s", _short(getattr(event, "error", "")))
+
+
+@crewai_event_bus.on(LLMCallStartedEvent)
+def _on_llm_started(source, event):
+    _llm_started[getattr(event, "call_id", None)] = time.time()
+    log.info("[LLM] Solicitud al LLM (%s): %d mensajes", getattr(event, "model", "?"), len(getattr(event, "messages", None) or []))
+
+
+@crewai_event_bus.on(LLMCallCompletedEvent)
+def _on_llm_completed(source, event):
+    started = _llm_started.pop(getattr(event, "call_id", None), None)
+    elapsed = f" en {time.time() - started:.1f}s" if started else ""
+    log.info("[LLM] LLM respondió%s", elapsed)
+
+
+@crewai_event_bus.on(LLMCallFailedEvent)
+def _on_llm_failed(source, event):
+    log.error("[LLM] LLM falló: %s", _short(getattr(event, "error", "")))
+
+
+@crewai_event_bus.on(ToolUsageStartedEvent)
+def _on_tool_started(source, event):
+    log.info("[TOOL] Herramienta: %s args=%s", getattr(event, "tool_name", "?"), _short(getattr(event, "tool_args", "")))
+
+
+@crewai_event_bus.on(ToolUsageFinishedEvent)
+def _on_tool_finished(source, event):
+    log.info("[TOOL] Herramienta terminada: %s", getattr(event, "tool_name", "?"))
+
+
+@crewai_event_bus.on(ToolUsageErrorEvent)
+def _on_tool_error(source, event):
+    log.error("[TOOL] Error en herramienta %s: %s", getattr(event, "tool_name", "?"), _short(getattr(event, "error", "")))
+
+
+def _logged_guardrail(fn):
+    """Envuelve un guardrail para registrar su veredicto en el log."""
+    name = getattr(fn, "__name__", "guardrail")
+
+    def wrapper(output):
+        ok, detail = fn(output)
+        if ok:
+            log.info("[GUARDRAIL] %s: OK", name)
+        else:
+            log.warning("[GUARDRAIL] %s RECHAZÓ la salida: %s", name, _short(detail))
+        return ok, detail
+
+    wrapper.__name__ = name
+    return wrapper
+
 
 SECRET_RE = re.compile(r"(gho_|ghp_|sk-)[A-Za-z0-9_]+|api[_-]?key\s*[:=]\s*\S+", re.I)
 INJECTION_RE = re.compile(r"ignore (all )?previous instructions|ignora (las )?instrucciones anteriores", re.I)
@@ -82,13 +177,31 @@ def make_task(module, feature: dict, context: str = "", guardrail=None):
     """Crea la Task del módulo de agente y le añade contexto y guardrail."""
     task = module.build_task(feature)
     task.description += context
-    task.guardrail = guardrail or guard_task_output
+    task.guardrail = _logged_guardrail(guardrail or guard_task_output)
     return task
 
 
 def execute(agent, task) -> str:
-    log.info("Ejecutando agente: %s", agent.role)
-    result = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=True).kickoff()
+    log.info("Ejecutando agente: %s (streaming)", agent.role)
+    crew = Crew(agents=[agent], tasks=[task], process=Process.sequential, verbose=False, stream=True)
+    streaming = crew.kickoff()
+    print(f"\n----- [{agent.role}] respuesta en vivo -----")
+    chars, tool_calls, last_type = 0, 0, StreamChunkType.TEXT
+    for chunk in streaming:
+        if chunk.chunk_type == StreamChunkType.TOOL_CALL and chunk.tool_call:
+            if chunk.tool_call.tool_name:
+                tool_calls += 1
+                log.info("[%s] llama a la herramienta: %s", agent.role, chunk.tool_call.tool_name)
+            print(chunk.tool_call.arguments, end="", flush=True)
+        else:
+            if last_type == StreamChunkType.TOOL_CALL:
+                print()
+            print(chunk.content, end="", flush=True)
+            chars += len(chunk.content)
+        last_type = chunk.chunk_type
+    print(f"\n----- [{agent.role}] fin -----")
+    log.info("[%s] streaming completado (%d caracteres, %d llamadas a herramientas)", agent.role, chars, tool_calls)
+    result = streaming.result
     return str(getattr(result, "raw", result))
 
 
