@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Orquestación de agentes con CrewAI: SDD, guardrails y human-in-the-loop en el proyecto Billetera Digital.">
+  <meta name="theme-color" content="#0b1f3a">
+  <title>Orquestación de agentes con CrewAI</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">CrewAI · SDD <small id="brand-title"></small></div>
+    <div class="spacer"></div>
+    <button class="btn" id="btn-index" type="button" aria-pressed="false" title="Índice (O)">☰ <span>Índice</span></button>
+    <button class="btn" id="btn-notes" type="button" aria-pressed="false" title="Notas del orador (N)">📝 <span>Notas</span></button>
+    <button class="btn" id="btn-fs" type="button" aria-pressed="false" title="Pantalla completa (F)">⛶ <span>Pantalla completa</span></button>
+  </header>
+
+  <main class="stage-wrap">
+    <div class="stage" id="stage" aria-live="polite">
+
+<!-- 1 ───────── Portada -->
+<section class="slide dark" id="s1" data-title="Orquestación de agentes con CrewAI" data-trans="fade" data-step=".45">
+  <div class="cover">
+    <span class="pill lg" style="--c:var(--teal)">HACKATON · BILLETERA DIGITAL</span>
+    <h1>Orquestación de agentes<br>con CrewAI</h1>
+    <p>Del issue de GitHub al software verificado: desarrollo guiado por especificaciones (SDD), guardrails automáticos y human-in-the-loop</p>
+    <div class="chain">
+      <div class="it purple" data-a><div class="orb">🏛</div>Arquitecto</div><span class="arr" data-a>➜</span>
+      <div class="it blue" data-a><div class="orb">⚙</div>Backend</div><span class="arr" data-a>➜</span>
+      <div class="it teal" data-a><div class="orb">🖥</div>Frontend</div><span class="arr" data-a>➜</span>
+      <div class="it amber" data-a><div class="orb">🧪</div>QA</div><span class="arr" data-a>➜</span>
+      <div class="it slate" data-a><div class="orb">🎓</div>Chapter</div>
+    </div>
+  </div>
+  <div class="notes-src">Presentamos cómo construimos un flujo multiagente con CrewAI que convierte un issue de GitHub Projects en diseño, backend, frontend, pruebas y una revisión final. La idea central: el LLM propone, las reglas validan (guardrails) y las personas deciden (human-in-the-loop).</div>
+</section>
+
+<!-- 2 ───────── Visión -->
+<section class="slide" id="s2" data-title="¿Qué construimos?" data-trans="push" data-step=".4">
+  <header class="head"><h2>¿Qué construimos?</h2><p>Un equipo de agentes de IA que trabaja como un equipo de software: con roles, entregables y controles</p></header>
+  <span class="tag pill">VISIÓN</span>
+  <div class="body">
+    <div class="g vision">
+      <div class="big">
+        <h3 style="color:var(--red)">El reto</h3>
+        <ul class="list r">
+          <li>Un LLM genera rápido, pero puede inventar endpoints, romper la sintaxis o dar por bueno lo que nunca ejecutó.</li>
+          <li>Sin control, cada agente parte de supuestos distintos y el resultado no es trazable.</li>
+        </ul>
+        <h3 style="color:var(--green);margin-top:1.4em">Nuestra respuesta</h3>
+        <ul class="list g">
+          <li>Orquestación determinista: main.py decide el orden y el contexto de cada agente.</li>
+          <li>Guardrails: reglas en Python validan cada salida y obligan al agente a corregirse.</li>
+          <li>Human-in-the-loop: las decisiones críticas las toma una persona.</li>
+        </ul>
+      </div>
+      <div class="kpis">
+        <div class="kpi purple" data-a><div><b>5</b><span>agentes en el flujo</span></div></div>
+        <div class="kpi blue" data-a><div><b>5</b><span>guardrails, uno por agente</span></div></div>
+        <div class="kpi amber" data-a><div><b>5</b><span>decisiones humanas</span></div></div>
+        <div class="kpi teal" data-a><div><b>1</b><span>log común: consola + archivo</span></div></div>
+      </div>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>2</span></footer>
+  <div class="notes-src">Las cifras son las del main.py actual: Arquitecto, Backend, Frontend, QA y Chapter; cada uno con su guardrail; cinco decisiones humanas (elegir issue, aprobar Arquitecto, aprobar Backend, confirmar la ejecución de QA y aprobar sus resultados); y un único log que sale por consola y se guarda en output/ejecucion.log.</div>
+</section>
+
+<!-- 3 ───────── Flujo completo -->
+<section class="slide" id="s3" data-title="El flujo completo de la orquestación" data-trans="fade" data-step=".3">
+  <header class="head"><h2>El flujo completo de la orquestación</h2><p>De izquierda a derecha: cada agente recibe solo los artefactos aprobados del anterior</p></header>
+  <span class="tag pill">ORQUESTACIÓN</span>
+  <div class="body">
+    <div class="pipe">
+      <div class="col gray" data-a><span class="pill amber">👤 Eliges proyecto e issue</span><div class="box node"><span class="ico">📋</span>MCP<br>Proyectos</div><div class="art">feature: título, descripción y criterios</div><span class="pill light">sin guardrail</span></div>
+      <div class="col purple" data-a><span class="pill amber">👤 Aprueba [s/r/n]</span><div class="box node"><span class="ico">🏛</span>Arquitecto</div><div class="art">architecture.mmd<br>sequence.mmd<br>openapi.yaml · informe</div><span class="pill green">🛡 Mermaid + OpenAPI</span></div>
+      <div class="col blue" data-a><span class="pill amber">👤 Aprueba (máx. 3)</span><div class="box node"><span class="ico">⚙</span>Backend</div><div class="art">Proyecto FastAPI completo: app/, tests/, README</div><span class="pill green">🛡 Estructura + arranque</span></div>
+      <div class="col teal" data-a><span class="pill gray">sin pausa humana</span><div class="box node"><span class="ico">🖥</span>Frontend</div><div class="art">App Angular que consume las rutas reales</div><span class="pill green">🛡 Rutas y proxy</span></div>
+      <div class="col amber" data-a><span class="pill amber">👤 Confirma y aprueba</span><div class="box node"><span class="ico">🧪</span>QA</div><div class="art">Karate + Selenium ejecutados · testing.md</div><span class="pill green">🛡 Cobertura y selectores</span></div>
+      <div class="col slate" data-a><span class="pill gray">sin pausa humana</span><div class="box node"><span class="ico">🎓</span>Chapter</div><div class="art">Veredicto final sobre los informes</div><span class="pill green">🛡 Salida válida</span></div>
+    </div>
+    <div class="legend" data-a><span class="pill amber lg">👤 decisión humana (HITL)</span><span class="pill green lg">🛡 guardrail automático</span><span>Si el guardrail rechaza, el agente reintenta solo; el humano ve la salida ya validada</span></div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>3</span></footer>
+  <div class="notes-src">Este es el mapa. Primero se obtiene el issue vía MCP. El Arquitecto produce los diagramas Mermaid y el contrato OpenAPI; un humano los aprueba. El Backend implementa el proyecto FastAPI completo; otro humano lo aprueba. El Frontend Angular consume las rutas realmente implementadas. QA ejecuta Karate y Selenium con los servicios levantados y un humano valida el resumen. Chapter emite el veredicto. Cada flecha transporta solo artefactos aprobados.</div>
+</section>
+
+<!-- 4 ───────── Stack -->
+<section class="slide" id="s4" data-title="Todo lo que usa el agente" data-trans="fade" data-step=".18">
+  <header class="head"><h2>Todo lo que usa el agente</h2><p>Tecnologías y estándares que hacen posible el flujo</p></header>
+  <span class="tag pill">STACK</span>
+  <div class="body">
+    <div class="g g4">
+      <div class="tech purple" data-a><div class="orb sm">🧩</div><h3>CrewAI 1.15</h3><p>Agent · Task · Crew · Process.sequential, guardrails y eventos</p></div>
+      <div class="tech blue" data-a><div class="orb sm">🤖</div><h3>GitHub Copilot SDK</h3><p>LLM vía adaptador CopilotLLM, con streaming de tokens</p></div>
+      <div class="tech gray" data-a><div class="orb sm">🔌</div><h3>MCP Proyectos</h3><p>Lee proyectos, backlog e issues de GitHub Projects</p></div>
+      <div class="tech pink" data-a><div class="orb sm">📐</div><h3>Mermaid</h3><p>Diagramas de arquitectura y de secuencia validados</p></div>
+      <div class="tech green" data-a><div class="orb sm">📜</div><h3>OpenAPI 3</h3><p>Contrato del API: la fuente de verdad del diseño</p></div>
+      <div class="tech teal" data-a><div class="orb sm">⚡</div><h3>FastAPI + Pydantic</h3><p>Backend Python con modelos, routers y servicios</p></div>
+      <div class="tech red" data-a><div class="orb sm">🅰</div><h3>Angular</h3><p>Frontend standalone con HttpClient y proxy de desarrollo</p></div>
+      <div class="tech amber" data-a><div class="orb sm">🥋</div><h3>Karate 1.5</h3><p>Pruebas de API sobre las rutas reales</p></div>
+      <div class="tech green" data-a><div class="orb sm">🌐</div><h3>Selenium + pytest</h3><p>Pruebas de interfaz en Chrome headless</p></div>
+      <div class="tech purple" data-a><div class="orb sm">🛡</div><h3>Guardrails en Python</h3><p>ast, yaml, json y reglas propias de dominio</p></div>
+      <div class="tech blue" data-a><div class="orb sm">📡</div><h3>Logging y eventos</h3><p>Streaming en vivo; consola y output/ejecucion.log</p></div>
+      <div class="tech slate" data-a><div class="orb sm">🚀</div><h3>venv · npm · uvicorn</h3><p>Se levantan los servicios generados para probarlos</p></div>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>4</span></footer>
+  <div class="notes-src">Resumen de piezas. CrewAI orquesta; el LLM es el de GitHub Copilot a través de un adaptador propio (CopilotLLM) que habilita streaming. MCP Proyectos da el issue. Mermaid y OpenAPI son los artefactos de diseño. FastAPI y Angular son el producto generado; Karate y Selenium lo verifican; todo queda registrado en un log.</div>
+</section>
+
+<!-- 5 ───────── Cómo orquesta CrewAI -->
+<section class="slide" id="s5" data-title="Cómo orquesta CrewAI" data-trans="push" data-step=".35">
+  <header class="head"><h2>Cómo orquesta CrewAI</h2><p>main.py es el director de orquesta: un Crew por agente, con contexto y reglas explícitas</p></header>
+  <span class="tag pill">ORQUESTACIÓN</span>
+  <div class="body">
+    <div class="g grid-5">
+      <div class="stack">
+        <div class="concept purple" data-a><div class="box">Agent</div><span class="d">rol, objetivo, backstory y LLM</span></div><div class="dn" data-a>↓</div>
+        <div class="concept blue" data-a><div class="box">Task</div><span class="d">descripción + contexto + guardrail</span></div><div class="dn" data-a>↓</div>
+        <div class="concept teal" data-a><div class="box">Crew</div><span class="d">ejecuta el agente con la tarea</span></div><div class="dn" data-a>↓</div>
+        <div class="concept amber" data-a><div class="box">kickoff()</div><span class="d">streaming de la respuesta</span></div>
+        <p class="muted" style="font-size:calc(var(--pt)*11.5);margin:0">Process.sequential: cada paso espera al anterior. El contexto se inyecta como texto en la descripción de la tarea.</p>
+      </div>
+      <div class="codes">
+        <pre class="code" data-a><span class="c"># main.py · execute(): un Crew por agente</span>
+crew = Crew(agents=[agent], tasks=[task],
+            process=Process.sequential,
+            verbose=False, stream=True)
+streaming = crew.kickoff()
+for chunk in streaming:        <span class="c"># texto en vivo</span>
+    print(chunk.content, end="", flush=True)
+result = streaming.result</pre>
+        <pre class="code" data-a><span class="c"># make_task(): contexto + guardrail con reintentos</span>
+task = module.build_task(feature)
+task.description += context
+task.guardrail = _logged_guardrail(guardrail)
+task.guardrail_max_retries = N</pre>
+      </div>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>5</span></footer>
+  <div class="notes-src">En vez de dejar que CrewAI decida el orden, main.py ejecuta un Crew por agente. Así controlamos exactamente qué artefactos recibe cada uno, insertamos aprobaciones humanas entre pasos y registramos todo. La función make_task adjunta el guardrail y el número de reintentos; execute() usa stream=True para ver la respuesta en vivo.</div>
+</section>
+
+<!-- 6 ───────── Entrada MCP -->
+<section class="slide" id="s6" data-title="Entrada: el issue llega por MCP Proyectos" data-trans="fade" data-step=".3">
+  <header class="head"><h2>Entrada: el issue llega por MCP Proyectos</h2><p>El humano elige qué trabajar; el agente no adivina el requerimiento</p></header>
+  <span class="tag pill">ENTRADA</span>
+  <div class="body">
+    <div class="flow">
+      <div class="step gray" data-a><div class="hd"><span class="orb sm">1</span></div><code>list_tools()</code><p>Autentica y carga las herramientas del servidor MCP</p></div><span class="arr" data-a>➜</span>
+      <div class="step blue" data-a><div class="hd"><span class="orb sm">2</span></div><code>list_projects()</code><p>Proyectos de GitHub Projects disponibles</p></div><span class="arr" data-a>➜</span>
+      <div class="step teal" data-a><div class="hd"><span class="orb sm">3</span></div><code>list_project_items()</code><p>Backlog del proyecto elegido</p></div><span class="arr" data-a>➜</span>
+      <div class="step purple" data-a><div class="hd"><span class="orb sm">4</span></div><code>get_feature_from_item()</code><p>Issue completo con sus criterios</p></div>
+    </div>
+    <div class="g g2 grow">
+      <div class="note amber" data-a><h4>👤 Human-in-the-loop #1</h4>
+        <ul class="list" style="--c:var(--amber);font-size:inherit"><li>Si hay varios proyectos o items, el usuario selecciona por número.</li><li>Entradas inválidas se rechazan y se vuelve a preguntar.</li><li>Cada decisión queda registrada en el log.</li></ul></div>
+      <pre class="code" data-a><span class="c"># feature: el contrato de entrada del flujo</span>
+{
+  "title": "HU 01 - Onboarding ...",
+  "description": "...",
+  "acceptance_criteria": ["CA-01 ..."]
+}
+<span class="c"># JSON-RPC sobre HTTP (streamable) con MCP</span></pre>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>6</span></footer>
+  <div class="notes-src">mcp_projects.py implementa el cliente MCP (JSON-RPC sobre HTTP con SSE). Primero se listan los proyectos, luego el backlog y se carga el issue elegido con get_feature_from_item. Ese diccionario 'feature' es la entrada de todos los agentes.</div>
+</section>
+
+<!-- 7 ───────── Agentes -->
+<section class="slide" id="s7" data-title="Los agentes que participan" data-trans="push" data-step=".35">
+  <header class="head"><h2>Los agentes que participan</h2><p>Cada agente = un rol, un objetivo, un entregable concreto y un guardrail propio</p></header>
+  <span class="tag pill">AGENTES</span>
+  <div class="body">
+    <div class="g g5">
+      <div class="card purple" data-a><h3>🏛 Arquitecto</h3><ul><li>Diagramas Mermaid (arquitectura y secuencia)</li><li>Contrato OpenAPI 3 del API local</li><li>Informe con trazabilidad a los criterios</li></ul></div>
+      <div class="card blue" data-a><h3>⚙ Backend</h3><ul><li>Proyecto FastAPI completo y ejecutable</li><li>Routers, servicios, repositorios, clientes</li><li>Pruebas pytest, README y .env.example</li></ul></div>
+      <div class="card teal" data-a><h3>🖥 Frontend</h3><ul><li>App Angular standalone</li><li>Servicio HttpClient sobre las rutas reales</li><li>Proxy de desarrollo hacia :8000</li></ul></div>
+      <div class="card amber" data-a><h3>🧪 QA</h3><ul><li>Pruebas Karate (API)</li><li>Pruebas Selenium (interfaz web)</li><li>Informe ejecutivo con resultados reales</li></ul></div>
+      <div class="card slate" data-a><h3>🎓 Chapter</h3><ul><li>Revisor final de todas las entregas</li><li>Contrasta requisitos vs informes</li><li>Veredicto y correcciones verificables</li></ul></div>
+    </div>
+    <div class="note light" data-a><h4 style="color:var(--navy)">Perfiles adicionales listos en el repositorio</h4>Datos y persistencia · Revisor de seguridad · Product Owner (activables en crew/workflow.py con CREWAI_INCLUDE_DATA y en el flujo de referencia main copy.py). El flujo actual de main.py usa los cinco agentes de arriba.</div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>7</span></footer>
+  <div class="notes-src">Los cinco agentes del flujo actual. Cada módulo en agents/ define el Agent (rol, objetivo, backstory), las instrucciones, build_task() y —los cuatro primeros— su guardrail. En el repositorio existen además perfiles de Datos, Seguridad y Product Owner que se pueden activar.</div>
+</section>
+
+<!-- 8 ───────── Arquitecto -->
+<section class="slide" id="s8" data-title="Arquitecto: diseño antes de código" data-trans="fade" data-step=".35">
+  <header class="head"><h2>Arquitecto: diseño antes de código</h2><p>Convierte el issue en artefactos de diseño verificables (SDD)</p></header>
+  <span class="tag pill">AGENTE 1</span>
+  <div class="body">
+    <div class="g grid-8">
+      <div class="stack">
+        <h3 style="margin:0;font-size:calc(var(--pt)*16);color:var(--navy)">Salida estructurada por marcadores</h3>
+        <div class="marker purple" data-a><div class="box">&lt;&lt;&lt;ARQUITECTURA&gt;&gt;&gt;</div><span>Mermaid flowchart</span></div>
+        <div class="marker blue" data-a><div class="box">&lt;&lt;&lt;SECUENCIA&gt;&gt;&gt;</div><span>Mermaid sequenceDiagram</span></div>
+        <div class="marker green" data-a><div class="box">&lt;&lt;&lt;OPENAPI&gt;&gt;&gt;</div><span>Contrato OpenAPI 3 (YAML)</span></div>
+        <div class="marker amber" data-a><div class="box">&lt;&lt;&lt;INFORME&gt;&gt;&gt;</div><span>Trazabilidad y supuestos</span></div>
+        <div class="row" data-a><span class="pill green lg">Hasta 50 reintentos</span><span class="pill amber lg">👤 Aprobación sin límite</span></div>
+        <span class="muted" style="font-size:calc(var(--pt)*12)">Aprobado → se guardan architecture.mmd, sequence.mmd y openapi.yaml</span>
+      </div>
+      <div class="stack">
+        <div class="card outline green" data-a><h3>🛡 Guardrail del Arquitecto</h3><ul><li>Las 4 secciones presentes y bien marcadas</li><li>Mermaid válido: tipo de diagrama, corchetes y comillas, subgraph/alt con 'end', mensajes 'A-&gt;&gt;B: texto'</li><li>Etiquetas con paréntesis entre comillas</li><li>OpenAPI con la clave openapi:</li></ul></div>
+        <pre class="code grow" data-a><span class="c"># ✗ rechazado → el agente corrige solo</span>
+flowchart TD
+  A[Servicio (externo)] --> B
+
+<span class="c"># ✓ aceptado</span>
+flowchart TD
+  A["Servicio (externo)"] --> B</pre>
+      </div>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>8</span></footer>
+  <div class="notes-src">El Arquitecto es el primer agente y el más importante en SDD: lo que apruebe aquí será la especificación que implementan los demás. Su guardrail valida las secciones, que los diagramas Mermaid tengan sintaxis correcta (sin necesitar mermaid-cli) y que el YAML sea un OpenAPI. Si falla, el agente recibe el error exacto y reintenta.</div>
+</section>
+
+<!-- 9 ───────── Backend -->
+<section class="slide" id="s9" data-title="Backend: el proyecto completo, no fragmentos" data-trans="push" data-step=".45">
+  <header class="head"><h2>Backend: el proyecto completo, no fragmentos</h2><p>Recibe architecture.mmd, sequence.mmd y openapi.yaml y genera output/backend-python/api</p></header>
+  <span class="tag pill">AGENTE 2</span>
+  <div class="body">
+    <div class="g grid-9">
+      <pre class="code" data-a>output/backend-python/api/
+├─ app/
+│  ├─ main.py        <span class="c"># FastAPI()</span>
+│  ├─ config.py      <span class="c"># variables de entorno</span>
+│  ├─ errors.py
+│  ├─ schemas/       <span class="c"># Pydantic</span>
+│  ├─ routers/
+│  ├─ services/
+│  ├─ repositories/
+│  └─ clients/       <span class="c"># httpx</span>
+├─ tests/            <span class="c"># pytest</span>
+├─ requirements.txt
+├─ .env.example
+├─ README.md
+└─ Dockerfile</pre>
+      <div class="stack">
+        <div class="card outline green" data-a style="flex:1"><h3>🛡 Guardrail del Backend</h3>
+          <ul class="list" style="--c:var(--green)"><li>Estructura y archivos obligatorios</li><li>Sintaxis Python (ast) e imports locales existentes</li><li>requirements.txt declara lo que se importa</li><li>Prohibido eval, exec, subprocess, pickle y secretos</li><li>Sin TODO ni NotImplementedError</li><li style="--c:var(--blue)">Arranque real: import app.main + app.openapi()</li><li style="--c:var(--blue)">Cubre todos los endpoints del OpenAPI aprobado</li></ul></div>
+        <div class="note blue" data-a>La prueba de arranque ejecuta el proyecto en una carpeta temporal con entorno sin secretos y compara las rutas reales con el contrato. 👤 Aprobación humana (máx. 3 intentos).</div>
+      </div>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>9</span></footer>
+  <div class="notes-src">El Backend entrega un proyecto completo y ejecutable. Su guardrail es el más exigente: además de validar sintaxis e imports, arranca la aplicación de verdad (import app.main y app.openapi()) y verifica que se implementen todas las rutas del contrato. Después, el humano aprueba con un máximo de tres intentos. Los archivos se escriben con un manifiesto que solo borra lo que se generó antes, nunca archivos tuyos.</div>
+</section>
+
+<!-- 10 ──────── Frontend -->
+<section class="slide" id="s10" data-title="Frontend: consume el API real del Backend" data-trans="fade" data-step=".35">
+  <header class="head"><h2>Frontend: consume el API real del Backend</h2><p>Angular standalone en output/frontend-angular/web</p></header>
+  <span class="tag pill">AGENTE 3</span>
+  <div class="body">
+    <div class="flow3">
+      <div class="box teal" data-a>🅰 Angular<small>localhost:4200</small></div><span class="arr" data-a>➜</span>
+      <div class="box gray" data-a>↔ proxy<small>proxy.conf.json</small></div><span class="arr" data-a>➜</span>
+      <div class="box blue" data-a>⚡ FastAPI<small>localhost:8000</small></div>
+      <div class="note amber" data-a>Sin CORS: el proxy evita configurar el Backend</div>
+    </div>
+    <div class="g g2 grow">
+      <div class="card outline gray" data-a style="--c:var(--line)"><h3 style="color:var(--navy)">Qué recibe</h3><ul class="list" style="--c:var(--teal)"><li>architecture.mmd y sequence.mmd aprobados</li><li>La lista exacta de rutas expuestas por el Backend, obtenida arrancándolo (método + path con prefijo)</li><li>El contrato OpenAPI y el código Python del Backend</li><li>Consume únicamente esas rutas: nada inventado, nada externo</li></ul></div>
+      <div class="card outline green" data-a><h3>🛡 Guardrail del Frontend</h3><ul class="list" style="--c:var(--teal)"><li>Archivos Angular obligatorios y JSON válido</li><li>Sintaxis TypeScript balanceada y HTML bien cerrado</li><li>Cada llamada HttpClient existe en el Backend con su método correcto</li><li>Todas las rutas del contrato están consumidas; el proxy cubre el prefijo</li><li>Sin innerHTML, eval ni secretos</li></ul></div>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>10</span></footer>
+  <div class="notes-src">Para que el Frontend no invente endpoints, se le entrega la lista real de rutas que el Backend expone al arrancar. El guardrail comprueba que cada llamada HttpClient exista con el método correcto y que todas las rutas del contrato estén consumidas. El proxy de desarrollo evita tener que habilitar CORS en el Backend.</div>
+</section>
+
+<!-- 11 ──────── QA -->
+<section class="slide" id="s11" data-title="QA: las pruebas se ejecutan de verdad" data-trans="push" data-step=".4">
+  <header class="head"><h2>QA: las pruebas se ejecutan de verdad</h2><p>Karate valida la API y Selenium la interfaz, contra los servicios levantados</p></header>
+  <span class="tag pill">AGENTE 4</span>
+  <div class="body">
+    <div class="g g3">
+      <div class="card amber" data-a><h3>🥋 Karate · API</h3><ul><li>Un Scenario por caso: method + status</li><li>Cubre cada ruta real del Backend</li><li>karate-config.js con baseUrl</li><li>Solo URLs localhost</li></ul></div>
+      <div class="card green" data-a><h3>🌐 Selenium · Web</h3><ul><li>pytest + Chrome headless</li><li>Esperas explícitas (WebDriverWait)</li><li>Selectores que existen en el Frontend</li><li>Captura de pantalla al fallar</li></ul></div>
+      <div class="card green" data-a><h3>🛡 Guardrail QA</h3><ul><li>Estructura karate/ y selenium/</li><li>Rutas del Backend cubiertas</li><li>Selector inventado → rechazado</li><li>Sin eval, subprocess ni secretos</li></ul></div>
+    </div>
+    <div class="note light grow" data-a style="font-size:calc(var(--pt)*13)"><h4 style="color:var(--navy)">Lo que hace distinto a este QA: separa quién diseña de quién mide</h4>
+      <ul class="list" style="--c:var(--teal);font-size:inherit"><li>El agente solo diseña las pruebas; qa_runner.py levanta Backend y Frontend, ejecuta Karate y Selenium y mide.</li><li>El informe lo compila Python con la salida real de las herramientas: si algo no corrió, figura como NO EJECUTADO con su motivo.</li><li>Al terminar apaga los servicios y libera los puertos, incluso si algo falla.</li></ul></div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>11</span></footer>
+  <div class="notes-src">Un LLM no debería 'declarar' que las pruebas pasaron. Aquí el agente escribe las pruebas, pero quien las ejecuta y mide es código determinista (qa_runner.py). El informe testing.md sale de resultados reales. Verificamos este flujo de punta a punta con el Backend FastAPI y la app Angular reales: Karate y Selenium pasaron.</div>
+</section>
+
+<!-- 12 ──────── Guardrails: resumen -->
+<section class="slide" id="s12" data-title="Guardrails: validar antes de aceptar" data-trans="fade" data-step=".3">
+  <header class="head"><h2>Guardrails: validar antes de aceptar</h2><p>Una función por agente que decide (True / False + feedback). Si es False, el agente reintenta con ese feedback</p></header>
+  <span class="tag pill">GUARDRAILS</span>
+  <div class="body">
+    <div class="tbl">
+      <div class="tr th" data-a><div>Agente</div><div>Qué valida</div><div>Reintentos</div></div>
+      <div class="tr purple" data-a><div>🏛 Arquitecto</div><div>Secciones, Mermaid válido (tipo, balance, subgraph/end) y OpenAPI</div><div>hasta 50</div></div>
+      <div class="tr blue" data-a><div>⚙ Backend</div><div>Estructura, sintaxis, imports, requirements, seguridad, arranque real y endpoints del contrato</div><div>hasta 10</div></div>
+      <div class="tr teal" data-a><div>🖥 Frontend</div><div>Archivos Angular, TS/HTML, llamadas HttpClient reales, proxy y cobertura de rutas</div><div>hasta 10</div></div>
+      <div class="tr amber" data-a><div>🧪 QA</div><div>Estructura Karate/Selenium, cobertura de rutas, selectores reales y sin URLs externas</div><div>hasta 10</div></div>
+      <div class="tr slate" data-a><div>🎓 Chapter</div><div>Salida con contenido suficiente y sin secretos (guardrail genérico)</div><div>3 (CrewAI)</div></div>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>12</span></footer>
+  <div class="notes-src">Los guardrails de CrewAI reciben la salida de la tarea y devuelven (True, salida) o (False, mensaje). Si es False, CrewAI vuelve a pedir al agente incluyendo el mensaje. Cada rechazo y aprobación se escribe en el log con la etiqueta [GUARDRAIL]. Los topes de reintentos son configurables en main.py y en cada agente.</div>
+</section>
+
+<!-- 13 ──────── Ciclo de autocorrección -->
+<section class="slide" id="s13" data-title="Guardrails en acción: el ciclo de autocorrección" data-trans="push" data-step=".4">
+  <header class="head"><h2>Guardrails en acción: el ciclo de autocorrección</h2><p>El feedback es concreto, así el agente sabe exactamente qué arreglar</p></header>
+  <span class="tag pill">GUARDRAILS</span>
+  <div class="body">
+    <div class="loop">
+      <div class="box blue" data-a>🤖 Agente<small>genera la salida</small></div><span class="arr" data-a>➜</span>
+      <div class="box" style="--c:var(--navy)" data-a>🛡 Guardrail<small>valida con reglas</small></div><span class="arr" data-a>➜</span>
+      <div class="res" data-a><div class="box green">✓ Aprobada<small>pasa al siguiente paso</small></div><div class="box red">✗ Rechazada<small>con feedback exacto</small></div></div>
+      <div class="back" data-a><span>↺ reintento con el feedback (hasta el tope)</span></div>
+    </div>
+    <div class="g grid-13 grow" style="margin-top:calc(var(--u)*3)">
+      <pre class="code" data-a><span class="c"># Rechazo real del guardrail del Backend</span>
+Proyecto backend inválido. Corrige y vuelve a
+entregar el proyecto COMPLETO:
+- requirements.txt no declara 'httpx'
+- faltan endpoints del contrato: GET /accounts/{}</pre>
+      <pre class="code" data-a><span class="c"># Y queda en el log</span>
+14:21:03 [WARNING] [GUARDRAIL] validate_backend_output
+          RECHAZÓ la salida: faltan endpoints...
+14:23:41 [INFO] [GUARDRAIL] validate_backend_output: OK</pre>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>13</span></footer>
+  <div class="notes-src">Este es el mecanismo de autocorrección. El agente genera, el guardrail valida; si rechaza, el mensaje de error (por ejemplo 'faltan endpoints del contrato' o 'requirements.txt no declara httpx') vuelve al agente como feedback y reintenta. Todo queda en el log. Los ejemplos de mensajes son ilustrativos del formato real que emite el guardrail.</div>
+</section>
+
+<!-- 14 ──────── HITL: cinco decisiones -->
+<section class="slide" id="s14" data-title="Human-in-the-loop: cinco decisiones humanas" data-trans="fade" data-step=".35">
+  <header class="head"><h2>Human-in-the-loop: cinco decisiones humanas</h2><p>Las personas deciden en los puntos donde un error sale caro</p></header>
+  <span class="tag pill">HITL</span>
+  <div class="body">
+    <div class="tl">
+      <div class="it gray" data-a><span class="orb sm">1</span><div class="box2"><b>Elegir proyecto e issue</b><span>Por número, con validación de entrada</span></div></div>
+      <div class="it purple" data-a><span class="orb sm">2</span><div class="box2"><b>Aprobar el Arquitecto</b><span>[s] aprobar · [r] reintentar con feedback · [n] abortar — sin límite de intentos</span></div></div>
+      <div class="it blue" data-a><span class="orb sm">3</span><div class="box2"><b>Aprobar el Backend</b><span>[s] [r] [n] — máximo 3 intentos; después se cierra el ciclo</span></div></div>
+      <div class="it amber" data-a><span class="orb sm">4</span><div class="box2"><b>Confirmar levantar servicios (QA)</b><span>[s] levantar y ejecutar · [n] omitir: queda NO EJECUTADO</span></div></div>
+      <div class="it amber" data-a><span class="orb sm">5</span><div class="box2"><b>Aprobar resultados de QA</b><span>[s] aprobar · [r] regenerar pruebas · [x] reejecutar · [n] abortar</span></div></div>
+    </div>
+    <p class="muted" data-a style="margin:0;font-size:calc(var(--pt)*13)">Todas las respuestas se registran en el log: quién decidió qué y cuándo.</p>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>14</span></footer>
+  <div class="notes-src">El humano no revisa código línea por línea: ve la salida ya validada por el guardrail y decide. Si elige 'r' da feedback en texto libre y el agente lo recibe como corrección. En el Arquitecto no hay límite porque es la especificación; en el Backend hay máximo de tres intentos. QA tiene dos pausas: antes de ejecutar (porque se instalan dependencias y se ejecuta código generado) y antes de publicar reportes.</div>
+</section>
+
+<!-- 15 ──────── HITL en QA -->
+<section class="slide" id="s15" data-title="HITL en QA: cuatro pasos con una pausa obligatoria" data-trans="push" data-step=".4">
+  <header class="head"><h2>HITL en QA: cuatro pasos con una pausa obligatoria</h2><p>Primero se ejecuta, luego un humano valida, y solo entonces se escriben los reportes</p></header>
+  <span class="tag pill">HITL</span>
+  <div class="body">
+    <div class="flow">
+      <div class="step blue" data-a><div class="hd"><span class="orb sm">1</span>Levantar servicios</div><ul class="list"><li>Backend :8000</li><li>Frontend :4200</li><li>Comprobación de salud</li></ul></div><span class="arr" data-a>➜</span>
+      <div class="step teal" data-a><div class="hd"><span class="orb sm">2</span>Ejecutar pruebas</div><ul class="list"><li>Karate (API)</li><li>Selenium (web)</li><li>Resultados medidos</li></ul></div><span class="arr" data-a>➜</span>
+      <div class="step red" data-a style="border-width:calc(var(--u)*.35)"><div class="hd"><span class="orb sm">3</span>⛔ Pausa humana</div><ul class="list"><li>Resumen en consola</li><li>s · r · x · n</li></ul></div><span class="arr" data-a>➜</span>
+      <div class="step green" data-a><div class="hd"><span class="orb sm">4</span>Generar reportes</div><ul class="list"><li>output/qa/karate</li><li>output/qa/selenium</li><li>informes/testing.md</li></ul></div>
+    </div>
+    <div class="g grid-15 grow">
+      <pre class="code" data-a>===== QA · Paso 3: resumen preliminar =====
+Servicios:
+  OK Backend  http://localhost:8000: HTTP 200
+  OK Frontend http://localhost:4200: HTTP 200
+Pruebas:
+  Karate    API  PASSED   1/1 pasadas, 4.3s
+  Selenium  Web  PASSED   1/1 pasadas, 6.7s
+Resultado global: APROBADO</pre>
+      <div class="note amber" data-a><p style="margin:0 0 .6em">Ejemplo del resumen que ve la persona antes de aprobar (salida de una ejecución real de prueba).</p>
+        <ul class="list" style="--c:var(--amber);font-size:inherit"><li>[r] regenera las pruebas con los fallos como feedback</li><li>[x] reejecuta sin cambios</li><li>[n] aborta sin escribir reportes</li></ul></div>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>15</span></footer>
+  <div class="notes-src">El flujo que se pidió para QA: levantar servicios y confirmar que responden; ejecutar Karate y Selenium; pausar y mostrar un resumen preliminar; y solo tras la aprobación generar output/qa/ y el informe ejecutivo. Si el humano pide regenerar, los fallos observados se envían al agente como feedback.</div>
+</section>
+
+<!-- 16 ──────── Observabilidad -->
+<section class="slide" id="s16" data-title="Observabilidad: ver qué está haciendo el agente" data-trans="fade" data-step=".45">
+  <header class="head"><h2>Observabilidad: ver qué está haciendo el agente</h2><p>Streaming en vivo, eventos de CrewAI y un único log en consola y archivo</p></header>
+  <span class="tag pill">OBSERVABILIDAD</span>
+  <div class="body">
+    <div class="g grid-16">
+      <div class="stack">
+        <div class="card blue" data-a><h3>📡 Streaming en vivo</h3><ul><li>Copilot SDK con streaming=True</li><li>Texto del modelo token a token</li><li>Latido cada 15 s mientras razona</li><li>Primer token, uso y fin de respuesta</li></ul></div>
+        <div class="card green" data-a><h3>📜 Eventos y registro</h3><ul><li>Eventos de tarea, agente y herramienta de CrewAI</li><li>Etiquetas [LLM] [TOOL] [GUARDRAIL] [QA]</li><li>stdout y stderr duplicados en output/ejecucion.log</li><li>Cada decisión humana queda registrada</li></ul></div>
+      </div>
+      <pre class="code" data-a><span class="c"># output/ejecucion.log (extracto)</span>
+13:58:20 [INFO] Inicia Arquitecto
+13:58:20 [INFO] [AGENTE] Agente en ejecución: Arquitecto
+13:58:21 [INFO] [LLM] Solicitud enviada a claude-sonnet-5.5
+13:58:36 [INFO] [LLM] Sigue en curso (15s, razonando)
+13:58:41 [INFO] [LLM] Primer token recibido a los 21.0s
+13:59:50 [INFO] [LLM] Respuesta completa: 46675 car.
+14:01:35 [INFO] [GUARDRAIL] validate_output: OK
+14:02:58 [INFO] Decisión humana: 's'
+14:03:10 [INFO] Guardado: output/arquitectura/openapi.yaml
+
+<span class="c"># Servicios QA</span>
+16:21:11 [INFO] [QA] Backend OPERATIVO: HTTP 200
+16:21:31 [INFO] [QA] Deteniendo backend</pre>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>16</span></footer>
+  <div class="notes-src">Para no esperar a ciegas minutos con la pantalla quieta, el adaptador del LLM usa el streaming del SDK de Copilot y emite eventos: inicio, razonamiento, texto, uso y fin, además de un latido cada 15 segundos. main.py los convierte en líneas de log y duplica la consola en output/ejecucion.log. El extracto es ilustrativo del formato real del log.</div>
+</section>
+
+<!-- 17 ──────── Riesgos -->
+<section class="slide" id="s17" data-title="Control de riesgos incorporado" data-trans="push" data-step=".3">
+  <header class="head"><h2>Control de riesgos incorporado</h2><p>Un agente que ejecuta código necesita límites claros</p></header>
+  <span class="tag pill">SEGURIDAD</span>
+  <div class="body">
+    <div class="g g3">
+      <div class="risk red" data-a><div class="orb sm">🔑</div><h3>Sin secretos</h3><p>Guardrails rechazan tokens y claves; el entorno de ejecución filtra variables TOKEN, SECRET, COPILOT…</p></div>
+      <div class="risk blue" data-a><div class="orb sm">📁</div><h3>Rutas seguras</h3><p>Los archivos generados no pueden salir de su carpeta (sin '..', sin rutas absolutas)</p></div>
+      <div class="risk amber" data-a><div class="orb sm">🚫</div><h3>Código prohibido</h3><p>eval, exec, subprocess, pickle, innerHTML y bypassSecurityTrust* se rechazan</p></div>
+      <div class="risk green" data-a><div class="orb sm">🙋</div><h3>Ejecución con permiso</h3><p>Instalar dependencias y levantar servicios requiere tu confirmación explícita</p></div>
+      <div class="risk teal" data-a><div class="orb sm">🧹</div><h3>Limpieza controlada</h3><p>Solo se detienen procesos propios del pipeline; nunca procesos ajenos</p></div>
+      <div class="risk purple" data-a><div class="orb sm">📋</div><h3>Honestidad de resultados</h3><p>Lo que no se ejecutó se informa como NO EJECUTADO, no se inventa</p></div>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>17</span></footer>
+  <div class="notes-src">Seis controles que aplicamos. Los guardrails bloquean contenido peligroso; los procesos generados se ejecutan con un entorno sin credenciales y solo tras confirmación humana; los archivos se escriben bajo rutas validadas; y el informe nunca afirma lo que no se ejecutó.</div>
+</section>
+
+<!-- 18 ──────── Salidas -->
+<section class="slide" id="s18" data-title="Qué produce cada ejecución" data-trans="fade" data-step=".4">
+  <header class="head"><h2>Qué produce cada ejecución</h2><p>Todo queda en carpetas predecibles y ordenadas por agente</p></header>
+  <span class="tag pill">RESULTADOS</span>
+  <div class="body">
+    <div class="g grid-18">
+      <pre class="code" data-a>output/
+├─ arquitectura/
+│  ├─ architecture.mmd
+│  ├─ sequence.mmd
+│  └─ openapi.yaml
+├─ backend-python/api/     <span class="c"># proyecto FastAPI</span>
+├─ frontend-angular/web/   <span class="c"># app Angular</span>
+├─ qa/
+│  ├─ karate/   (features + reports/)
+│  └─ selenium/ (tests + reports/)
+└─ ejecucion.log
+informes/
+├─ architect.md · backend.md · frontend.md
+├─ testing.md        <span class="c"># informe ejecutivo QA</span>
+└─ chapter_review.md <span class="c"># veredicto final</span></pre>
+      <div class="stack">
+        <div class="card purple" data-a><h3>📐 Specification-Driven</h3><ul><li>El OpenAPI aprobado manda sobre el código</li><li>Backend, Frontend y QA se validan contra él</li><li>Mermaid documenta arquitectura y secuencia</li></ul></div>
+        <div class="card green" data-a><h3>🔁 Trazable y reproducible</h3><ul><li>Cada artefacto tiene un autor (agente) y una aprobación</li><li>testing.md incluye los comandos para reproducir</li><li>El log reconstruye qué pasó y cuándo</li></ul></div>
+      </div>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>18</span></footer>
+  <div class="notes-src">Estructura de carpetas generada. Los artefactos de diseño van a output/arquitectura; el código a backend-python y frontend-angular; las pruebas y sus reportes a output/qa; y los informes ejecutivos a informes/. La carpeta output/ está en .gitignore, así que no ensucia el repositorio.</div>
+</section>
+
+<!-- 19 ──────── Balance -->
+<section class="slide" id="s19" data-title="Qué está verificado, qué falta y siguientes pasos" data-trans="push" data-step=".45">
+  <header class="head"><h2>Qué está verificado, qué falta y siguientes pasos</h2><p>Con honestidad sobre el alcance actual</p></header>
+  <span class="tag pill">BALANCE</span>
+  <div class="body">
+    <div class="g g3">
+      <div class="card green" data-a><h3>✅ Verificado</h3><ul><li>Guardrails probados con casos válidos e inválidos (Mermaid, Backend, Frontend, QA)</li><li>QA de punta a punta con servicios reales: FastAPI + Angular, Karate y Selenium pasaron</li><li>Servicios se levantan, se prueban y se detienen limpiamente</li><li>Escritura segura de archivos con manifiesto</li></ul></div>
+      <div class="card amber" data-a><h3>⚠ Límites actuales</h3><ul><li>El TypeScript se valida estructuralmente, no se compila</li><li>Los tests del Backend se exigen pero no se ejecutan</li><li>La cobertura de rutas en Karate se comprueba por texto</li><li>guard_input está definido pero aún no conectado al flujo</li><li>Un guardrail que agota reintentos detiene el flujo</li></ul></div>
+      <div class="card blue" data-a><h3>🚀 Siguientes pasos</h3><ul><li>Adoptar OpenSpec para formalizar el SDD (proposal, design, tasks, specs)</li><li>Compilar Angular (ng build) y ejecutar pytest en el guardrail</li><li>Conectar la validación de entrada</li><li>Integrar en CI y publicar los reportes</li></ul></div>
+    </div>
+  </div>
+  <footer class="foot"><span>CrewAI · SDD · Billetera Digital</span><span>19</span></footer>
+  <div class="notes-src">Balance honesto. Lo verificado: los guardrails con pruebas y el flujo de QA con servicios reales. Límites: no compilamos Angular ni ejecutamos los tests del Backend dentro del guardrail; la cobertura de Karate es textual; y la validación de entrada existe pero no está conectada. Próximos pasos: OpenSpec, compilación y tests en el guardrail, y CI.</div>
+</section>
+
+<!-- 20 ──────── Cierre -->
+<section class="slide dark" id="s20" data-title="Tres ideas para llevarse" data-trans="fade" data-step=".5">
+  <div class="close">
+    <h2>Tres ideas para llevarse</h2>
+    <div class="idea purple" data-a><span class="orb">🎼</span><div><b>Orquestación determinista</b><span>main.py decide orden, contexto y aprobaciones; CrewAI ejecuta cada agente</span></div></div>
+    <div class="idea green" data-a><span class="orb">🛡</span><div><b>Guardrails que enseñan</b><span>Reglas en Python validan y devuelven feedback exacto para autocorregirse</span></div></div>
+    <div class="idea amber" data-a><span class="orb">👤</span><div><b>El humano decide</b><span>Cinco puntos de control con salida ya validada y todo registrado</span></div></div>
+    <div class="q" data-a>¿Preguntas?</div>
+  </div>
+  <div class="notes-src">Cierre: tres mensajes. Orquestación determinista para controlar el proceso; guardrails que validan y enseñan al agente a corregirse; y personas que deciden en los puntos críticos. Abrir a preguntas.</div>
+</section>
+
+    </div>
+  </main>
+
+  <nav class="controls" aria-label="Navegación">
+    <button class="btn" id="btn-prev" type="button" aria-label="Diapositiva anterior">◀ <span>Anterior</span></button>
+    <div class="progress" role="progressbar" aria-label="Progreso de la presentación"><i></i></div>
+    <span class="counter" id="counter">1 / 20</span>
+    <button class="btn" id="btn-next" type="button" aria-label="Diapositiva siguiente"><span>Siguiente</span> ▶</button>
+  </nav>
+</div>
+
+<aside id="notes" aria-label="Notas del orador"><h4>Notas del orador</h4><p></p></aside>
+<div id="overview" role="dialog" aria-label="Índice de diapositivas"><h3>Índice</h3><div class="grid"></div></div>
+
+<script src="app.js"></script>
+</body>
+</html>
