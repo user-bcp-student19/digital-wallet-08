@@ -1,6 +1,13 @@
-"""Backend: implementa en FastAPI el diseño aprobado (Mermaid + OpenAPI) y lo entrega como archivos."""
+"""Backend: implementa en FastAPI el diseño aprobado (Mermaid + OpenAPI) y lo entrega como proyecto completo."""
 import ast
+import hashlib
+import json
+import logging
+import os
 import re
+import subprocess
+import sys
+import tempfile
 from pathlib import Path, PurePosixPath
 
 import yaml
@@ -15,8 +22,12 @@ EXTRACT_CODE = True
 OUTPUT_SUBDIR = Path("backend-python") / "api"
 BACKEND_GUARDRAIL_RETRIES = 10
 MAIN_MODULE = "app/main.py"
-ALLOWED_SUFFIXES = {".py", ".txt", ".md", ".json", ".yaml", ".yml", ".toml", ".example"}
-MAX_FILES = 40
+MANIFEST = ".generated_files.json"
+SMOKE_TIMEOUT_SECONDS = 60
+REQUIRED_FILES = ["app/__init__.py", "app/main.py", "app/config.py", "requirements.txt", "README.md", ".env.example"]
+ALLOWED_SUFFIXES = {".py", ".txt", ".md", ".json", ".yaml", ".yml", ".toml", ".example", ".ini", ".cfg"}
+ALLOWED_NAMES = {"Dockerfile", ".gitignore", ".dockerignore"}
+MAX_FILES = 70
 MAX_FILE_BYTES = 200_000
 HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
 
@@ -25,7 +36,7 @@ Recibes aprobados por el humano: el diagrama de arquitectura (architecture.mmd),
 (sequence.mmd) y el contrato OpenAPI del API local. Además, las especificaciones OpenAPI de las APIs y pasarelas
 externas están en `client/openapi` (se incluyen como contexto).
 
-Implementa el backend en Python/FastAPI basándote estrictamente en esos artefactos:
+Debes entregar el PROYECTO COMPLETO y ejecutable (no fragmentos), basado estrictamente en esos artefactos:
 - Un módulo por componente local del diagrama de arquitectura (routers, servicios, repositorios, clientes externos).
 - Respeta el recorrido del diagrama de secuencia (orden de llamadas, validaciones, errores y pasarelas externas).
 - Implementa TODOS los paths y métodos del contrato OpenAPI local, con sus modelos Pydantic, códigos HTTP,
@@ -33,11 +44,26 @@ Implementa el backend en Python/FastAPI basándote estrictamente en esos artefac
 - Consume los servicios externos con `httpx` y timeouts explícitos; mapea sus errores como indica el contrato.
 - Persistencia en memoria (diccionarios) salvo que el diseño indique otra cosa. Código completo y ejecutable:
   sin TODO, sin `raise NotImplementedError`, sin funciones vacías.
-- Configuración por variables de entorno. Nunca escribas secretos, tokens ni contraseñas en el código.
+- Configuración por variables de entorno, TODAS con valor por defecto para que `uvicorn app.main:app` arranque sin
+  `.env`. Nunca escribas secretos, tokens ni contraseñas en el código.
 - Prohibido: eval, exec, os.system, subprocess, pickle y `shell=True`.
 
-FORMATO DE SALIDA OBLIGATORIO. Entrega cada archivo así (rutas relativas, con `/`), sin texto fuera de este formato
-salvo una breve nota final:
+Estructura obligatoria del proyecto (rutas relativas a la raíz del proyecto):
+- `app/__init__.py`, `app/main.py` (define `app = FastAPI(...)`, registra routers y manejadores de error),
+  `app/config.py` (configuración desde variables de entorno con valores por defecto).
+- `app/schemas/` (modelos Pydantic de peticiones/respuestas/errores), `app/routers/` (un router por componente o tag),
+  `app/services/` (lógica de negocio), `app/repositories/` (persistencia en memoria), `app/clients/` (servicios
+  externos), `app/errors.py` (excepciones y esquema de error). Cada carpeta con su `__init__.py`.
+- `tests/__init__.py` y `tests/test_*.py` con pruebas (pytest + `fastapi.testclient.TestClient`) que cubran los
+  endpoints y sus errores; los servicios externos se sustituyen por dobles, sin llamadas de red reales.
+- `requirements.txt` con TODAS las dependencias que importa el código (fastapi, uvicorn, httpx, pydantic-settings si lo
+  usas, pytest, etc.). `.env.example` con todas las variables de config. `README.md` con instalación, variables y cómo
+  ejecutar (`uvicorn app.main:app --reload`, puerto 8000) y probar (`pytest`). `Dockerfile` (opcional) y `.gitignore`.
+- Todo import local debe corresponder a un archivo que entregues.
+
+FORMATO DE SALIDA OBLIGATORIO. Entrega cada archivo así (rutas relativas, con `/`), cada uno con su bloque de código
+envuelto en ``` (si el archivo contiene bloques ``` internos, como un README, el cierre del archivo es el ``` final).
+Sin texto fuera de este formato salvo una breve nota tras `<<<FIN>>>`:
 
 <<<FILE: app/main.py>>>
 ```python
@@ -50,10 +76,6 @@ uvicorn
 httpx
 ```
 <<<FIN>>>
-
-Archivos obligatorios: `app/main.py` (define `app = FastAPI(...)` e incluye los routers) y `requirements.txt`
-(con fastapi y uvicorn). Se ejecutará con `uvicorn app.main:app`. Todo import local debe corresponder a un archivo
-que entregues (por ejemplo `from app.services.accounts import ...` exige `app/services/accounts.py`).
 """
 
 agent = Agent(
@@ -68,15 +90,42 @@ agent = Agent(
 
 
 # ── Parseo y escritura de archivos ─────────────────────────────────
-FILE_RE = re.compile(r"<<<FILE:\s*([^>\n]+?)\s*>>>\s*```[a-zA-Z0-9_+-]*[ \t]*\n(.*?)```", re.DOTALL)
+FILE_MARKER_RE = re.compile(r"<<<FILE:\s*([^>\n]+?)\s*>>>")
+FIN_MARKER = "<<<FIN>>>"
+
+
+def _file_blocks(text: str) -> list[tuple[str, str, bool]]:
+    """Divide la salida en (ruta, contenido, cerrado). El cierre de cada archivo es el último ``` de su bloque,
+    de modo que un README con bloques ``` internos no se trunca."""
+    markers = list(FILE_MARKER_RE.finditer(text))
+    blocks = []
+    for i, marker in enumerate(markers):
+        end = markers[i + 1].start() if i + 1 < len(markers) else len(text)
+        chunk = text[marker.end():end]
+        if FIN_MARKER in chunk:
+            chunk = chunk.split(FIN_MARKER)[0]
+        chunk = chunk.strip()
+        path = marker.group(1).strip().replace("\\", "/").removeprefix("./")
+        opening = re.match(r"```[a-zA-Z0-9_+.-]*[ \t]*\n", chunk)
+        if not opening or not chunk.endswith("```") or len(chunk) < opening.end() + 3:
+            blocks.append((path, "", False))
+            continue
+        blocks.append((path, chunk[opening.end():-3].rstrip() + "\n", True))
+    return blocks
 
 
 def parse_files(text: str) -> dict[str, str]:
     """Extrae {ruta_relativa: contenido} de los bloques <<<FILE: ruta>>> + bloque de código."""
-    files: dict[str, str] = {}
-    for path, content in FILE_RE.findall(text):
-        files[path.strip().replace("\\", "/").removeprefix("./")] = content.rstrip() + "\n"
-    return files
+    return {path: content for path, content, closed in _file_blocks(text) if closed}
+
+
+def incomplete_output(text: str) -> list[str]:
+    """Problemas de integridad de la respuesta: archivos sin cerrar o respuesta cortada (sin <<<FIN>>>)."""
+    problems = [f"el archivo {path or '(sin ruta)'} no tiene su bloque de código completo y cerrado con ```"
+                for path, _, closed in _file_blocks(text) if not closed]
+    if FILE_MARKER_RE.search(text) and FIN_MARKER not in text:
+        problems.append("la respuesta está incompleta: falta <<<FIN>>> al final (¿se cortó?); entrega todos los archivos")
+    return problems
 
 
 def write_files(files: dict[str, str], root: Path) -> list[Path]:
@@ -91,6 +140,26 @@ def write_files(files: dict[str, str], root: Path) -> list[Path]:
         target.write_text(content, encoding="utf-8")
         written.append(target)
     return written
+
+
+def sync_project(files: dict[str, str], root: Path) -> tuple[list[Path], list[Path]]:
+    """Escribe el proyecto y borra solo los archivos que una generación anterior creó y esta ya no incluye."""
+    root = root.resolve()
+    manifest = root / MANIFEST
+    removed = []
+    if manifest.exists():
+        try:
+            previous = json.loads(manifest.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            previous = []
+        for rel in previous:
+            stale = (root / rel).resolve()
+            if rel not in files and root in stale.parents and stale.is_file():
+                stale.unlink()
+                removed.append(stale)
+    written = write_files(files, root)
+    manifest.write_text(json.dumps(sorted(files), indent=2), encoding="utf-8")
+    return written, removed
 
 
 # ── Contrato OpenAPI y rutas implementadas ─────────────────────────
@@ -259,8 +328,10 @@ def _unsafe_path(path: str) -> str | None:
     p = PurePosixPath(path)
     if not path or p.is_absolute() or re.match(r"^[A-Za-z]:", path) or ".." in p.parts:
         return "debe ser relativa y sin '..'"
-    if p.suffix not in ALLOWED_SUFFIXES and p.name not in {".env.example"}:
+    if p.suffix not in ALLOWED_SUFFIXES and p.name not in ALLOWED_NAMES:
         return f"extensión no permitida ({p.suffix or 'sin extensión'})"
+    if p.name == MANIFEST:
+        return "nombre reservado"
     return None
 
 
@@ -327,8 +398,125 @@ def _check_local_imports(trees: dict[str, ast.AST], file_set: set[str]) -> list[
     return errors
 
 
-def validate_files(files: dict[str, str], spec: set[tuple[str, str]]) -> list[str]:
-    """Devuelve la lista de problemas del código entregado (vacía si todo es correcto)."""
+STDLIB_MODULES = set(sys.stdlib_module_names)
+IMPORT_TO_PACKAGE = {
+    "yaml": "pyyaml", "jwt": "pyjwt", "jose": "python-jose", "multipart": "python-multipart",
+    "dotenv": "python-dotenv", "pydantic_settings": "pydantic-settings", "email_validator": "email-validator",
+    "PIL": "pillow", "dateutil": "python-dateutil", "bs4": "beautifulsoup4",
+}
+IMPLICIT_MODULES = {"pydantic", "pydantic_core", "starlette", "typing_extensions", "anyio", "annotated_types"}
+SMOKE_ENV_KEYS = {"PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "TEMP", "TMP", "HOME",
+                  "USERPROFILE", "APPDATA", "LOCALAPPDATA"}
+SMOKE_SCRIPT = """
+import json, sys
+sys.path.insert(0, ".")
+from app.main import app
+schema = app.openapi()
+print("__PATHS__" + json.dumps({p: sorted(ops) for p, ops in schema.get("paths", {}).items()}))
+"""
+_smoke_cache: dict[str, tuple[set[tuple[str, str]] | None, str | None]] = {}
+
+
+def _declared_packages(requirements: str) -> set[str]:
+    declared = set()
+    for line in requirements.splitlines():
+        line = line.split("#")[0].strip()
+        match = re.match(r"[A-Za-z0-9_.\-]+", line) if line and not line.startswith("-") else None
+        if match:
+            declared.add(re.sub(r"[_.]", "-", match.group().lower()))
+    return declared
+
+
+def _check_requirements(requirements: str, trees: dict[str, ast.AST], local_tops: set[str]) -> list[str]:
+    """Toda librería de terceros que importa el código (app y tests) debe estar en requirements.txt."""
+    declared = _declared_packages(requirements)
+    missing: dict[str, str] = {}
+    for path, tree in trees.items():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and not node.level:
+                modules = [node.module or ""]
+            else:
+                continue
+            for module in modules:
+                top = module.split(".")[0]
+                if not top or top in STDLIB_MODULES or top in local_tops or top in IMPLICIT_MODULES:
+                    continue
+                package = re.sub(r"[_.]", "-", IMPORT_TO_PACKAGE.get(top, top).lower())
+                if package not in declared:
+                    missing.setdefault(package, path)
+    return [f"requirements.txt no declara '{pkg}' (se importa en {path})" for pkg, path in sorted(missing.items())]
+
+
+def _check_project_structure(files: dict[str, str], trees: dict[str, ast.AST]) -> list[str]:
+    errors = [f"falta {req}" for req in REQUIRED_FILES if req not in files]
+    for prefix, label in (("app/routers/", "app/routers/ con al menos un router"),
+                          ("app/services/", "app/services/ con la lógica de negocio"),
+                          ("app/schemas", "app/schemas/ (o schemas.py) con los modelos Pydantic")):
+        if not any(f.startswith(prefix) and f.endswith(".py") for f in files):
+            errors.append(f"falta {label}")
+    test_files = [f for f in files if f.startswith("tests/") and PurePosixPath(f).name.startswith("test_")
+                  and f.endswith(".py")]
+    has_tests = any(isinstance(n, ast.FunctionDef) and n.name.startswith("test_")
+                    for f in test_files if f in trees for n in ast.walk(trees[f]))
+    if not has_tests:
+        errors.append("faltan pruebas: tests/test_*.py con funciones test_*")
+    if "uvicorn app.main:app" not in files.get("README.md", "uvicorn app.main:app"):
+        errors.append("README.md debe explicar cómo ejecutar: uvicorn app.main:app --reload")
+    if ".env.example" in files and not files[".env.example"].strip():
+        errors.append(".env.example no puede estar vacío")
+    config = files.get("app/config.py", "")
+    if config and not re.search(r"environ|getenv|BaseSettings", config):
+        errors.append("app/config.py debe leer la configuración de variables de entorno")
+    return errors
+
+
+def smoke_test(files: dict[str, str]) -> tuple[set[tuple[str, str]] | None, str | None]:
+    """Arranca el proyecto en una carpeta temporal (import app.main + app.openapi()) con un entorno limpio.
+    Devuelve (rutas realmente servidas, error). Rutas None sin error = no se pudo ejecutar por el entorno."""
+    if os.getenv("BACKEND_SMOKE_TEST", "1") == "0":
+        return None, None
+    key = hashlib.sha256(json.dumps(sorted(files.items())).encode("utf-8")).hexdigest()
+    if key in _smoke_cache:
+        return _smoke_cache[key]
+    local_tops = {f.split("/")[0].removesuffix(".py") for f in files}
+    env = {k: v for k, v in os.environ.items() if k.upper() in SMOKE_ENV_KEYS}
+    env.update(PYTHONDONTWRITEBYTECODE="1", PYTHONIOENCODING="utf-8")
+    with tempfile.TemporaryDirectory() as tmp:
+        write_files(files, Path(tmp))
+        try:
+            proc = subprocess.run([sys.executable, "-c", SMOKE_SCRIPT], cwd=tmp, env=env, capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace", timeout=SMOKE_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            result = (None, f"el proyecto no termina de arrancar en {SMOKE_TIMEOUT_SECONDS}s (import app.main)")
+            _smoke_cache[key] = result
+            return result
+    if proc.returncode != 0:
+        missing_module = re.search(r"ModuleNotFoundError: No module named '([\w.]+)'", proc.stderr)
+        if missing_module and missing_module.group(1).split(".")[0] not in local_tops:
+            logging.getLogger("digital_wallet").warning(
+                "[BACKEND] Prueba de arranque omitida: falta instalar '%s' en este entorno", missing_module.group(1))
+            result = (None, None)
+        else:
+            tail = "\n".join(proc.stderr.strip().splitlines()[-6:])
+            result = (None, f"el proyecto no arranca (import app.main y app.openapi()):\n{tail[-700:]}")
+    else:
+        line = next((ln for ln in proc.stdout.splitlines() if ln.startswith("__PATHS__")), None)
+        paths = json.loads(line[len("__PATHS__"):]) if line else {}
+        result = ({(m.upper(), _norm_path(p)) for p, methods in paths.items() for m in methods
+                   if m in HTTP_METHODS}, None)
+    _smoke_cache[key] = result
+    return result
+
+
+def runtime_routes(files: dict[str, str]) -> set[tuple[str, str]] | None:
+    """Rutas que el proyecto expone al arrancar de verdad (None si no se pudo ejecutar)."""
+    return smoke_test(files)[0]
+
+
+def validate_files(files: dict[str, str], spec: set[tuple[str, str]], run_smoke: bool = True) -> list[str]:
+    """Devuelve la lista de problemas del proyecto entregado (vacía si todo es correcto)."""
     if not files:
         return ["no se encontró ningún archivo con el formato <<<FILE: ruta>>> + bloque de código"]
     errors = []
@@ -342,12 +530,9 @@ def validate_files(files: dict[str, str], spec: set[tuple[str, str]]) -> list[st
             errors.append(f"{path}: supera {MAX_FILE_BYTES} bytes")
         if SECRET_RE.search(content):
             errors.append(f"{path}: contiene un secreto o credencial escrita en el código; usa variables de entorno")
-    if MAIN_MODULE not in files:
-        errors.append(f"falta {MAIN_MODULE}")
+    errors += [f"falta {req}" for req in REQUIRED_FILES if req not in files]
     req = files.get("requirements.txt")
-    if req is None:
-        errors.append("falta requirements.txt")
-    elif not all(re.search(rf"^{pkg}\b", req, re.I | re.M) for pkg in ("fastapi", "uvicorn")):
+    if req is not None and not all(re.search(rf"^{pkg}\b", req, re.I | re.M) for pkg in ("fastapi", "uvicorn")):
         errors.append("requirements.txt debe incluir fastapi y uvicorn")
 
     trees = {}
@@ -361,23 +546,31 @@ def validate_files(files: dict[str, str], spec: set[tuple[str, str]]) -> list[st
         errors.append(f"{MAIN_MODULE} debe crear la aplicación con FastAPI(...)")
     if trees:
         errors += _check_local_imports(trees, set(files))
+        errors += [e for e in _check_project_structure(files, trees) if e not in errors]
+        if req is not None:
+            errors += _check_requirements(req, trees, {f.split("/")[0].removesuffix(".py") for f in files})
+    implemented = None
+    if run_smoke and not errors:
+        implemented, smoke_error = smoke_test(files)
+        if smoke_error:
+            errors.append(smoke_error)
     if spec and not errors:
-        missing = _missing_routes(spec, code_routes(trees))
+        missing = _missing_routes(spec, implemented if implemented is not None else code_routes(trees))
         if missing:
             errors.append("faltan endpoints del contrato OpenAPI: " + ", ".join(missing))
     return errors
 
 
 def build_guardrail(openapi_text: str = ""):
-    """Crea el guardrail del Backend, que verifica el código contra el OpenAPI aprobado."""
+    """Crea el guardrail del Backend: proyecto completo, arrancable y que implemente el OpenAPI aprobado."""
     spec = spec_routes(openapi_text)
 
     def validate_backend_output(output):
         text = str(getattr(output, "raw", output) or "")
-        errors = validate_files(parse_files(text), spec)
+        errors = incomplete_output(text) + validate_files(parse_files(text), spec)
         if errors:
-            return False, ("Código backend inválido. Corrige y vuelve a entregar TODOS los archivos con el formato "
-                           "<<<FILE: ruta>>> + bloque de código + <<<FIN>>>:\n- " + "\n- ".join(errors[:12]))
+            return False, ("Proyecto backend inválido. Corrige y vuelve a entregar el proyecto COMPLETO (todos los archivos) "
+                           "con el formato <<<FILE: ruta>>> + bloque de código + <<<FIN>>>:\n- " + "\n- ".join(errors[:12]))
         return True, text
 
     validate_backend_output.max_retries = BACKEND_GUARDRAIL_RETRIES
@@ -392,9 +585,10 @@ def build_task(feature: dict, architect_task=None) -> Task:
     task_kwargs = {
         "description": INSTRUCTIONS + "\nFeature: " + str(feature.get("title", "")),
         "expected_output": (
-            "Archivos Python/FastAPI en formato <<<FILE: ruta>>> con bloque de código, incluyendo app/main.py "
-            "y requirements.txt, que implementen todos los endpoints del contrato OpenAPI según los diagramas "
-            "de arquitectura y secuencia, terminados con <<<FIN>>>."
+            "Proyecto Python/FastAPI COMPLETO en formato <<<FILE: ruta>>> con bloque de código: app/ (config, schemas, "
+            "routers, services, repositories, clients, errors, main), tests/, requirements.txt, .env.example, README.md, "
+            "que arranque con uvicorn app.main:app e implemente todos los endpoints del contrato OpenAPI según los "
+            "diagramas de arquitectura y secuencia, terminado con <<<FIN>>>."
         ),
         "agent": agent,
     }

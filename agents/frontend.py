@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 
 from crewai import Agent, Task
 from crew.llm_config import llm
-from agents.backend import SECRET_RE, parse_files, spec_routes, write_files  # noqa: F401 (write_files se reexporta)
+from agents.backend import SECRET_RE, incomplete_output, parse_files, spec_routes, write_files  # noqa: F401
 
 KEY = 'frontend'
 LABEL = 'FrontEnd'
@@ -439,7 +439,7 @@ def build_guardrail(openapi_text: str = "", served: set[tuple[str, str]] | None 
 
     def validate_frontend_output(output):
         text = str(getattr(output, "raw", output) or "")
-        errors = validate_files(parse_files(text), spec, served)
+        errors = incomplete_output(text) + validate_files(parse_files(text), spec, served)
         if errors:
             return False, ("Aplicación Angular inválida. Corrige y vuelve a entregar TODOS los archivos con el formato "
                            "<<<FILE: ruta>>> + bloque de código + <<<FIN>>>:\n- " + "\n- ".join(errors[:12]))

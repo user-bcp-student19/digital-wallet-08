@@ -393,13 +393,17 @@ def main():
     backend_text = run_with_hitl(backend, feature, backend_context, max_attempts=MAX_BACKEND_ATTEMPTS,
                                  guardrail=backend.build_guardrail(arch_artifacts["openapi.yaml"]))
     backend_files = backend.parse_files(backend_text)
-    for path in backend.write_files(backend_files, DIRS["backend"]):
+    written, removed = backend.sync_project(backend_files, DIRS["backend"])
+    for path in written:
         log.info("Guardado: %s", path)
-    log.info("Backend: %d archivos escritos en %s", len(backend_files), DIRS["backend"])
+    for path in removed:
+        log.info("Eliminado (obsoleto de una generación anterior): %s", path)
+    log.info("Backend: proyecto completo con %d archivos en %s", len(backend_files), DIRS["backend"])
     backend_report = (
-        "# Informe Backend\n\nImplementación FastAPI generada a partir de architecture.mmd, sequence.mmd y openapi.yaml.\n\n"
-        f"Carpeta: `{DIRS['backend'].relative_to(BASE).as_posix()}`\n\n## Archivos\n"
-        + "\n".join(f"- `{p}`" for p in sorted(backend_files)) + "\n"
+        "# Informe Backend\n\nProyecto FastAPI completo generado a partir de architecture.mmd, sequence.mmd y openapi.yaml.\n\n"
+        f"Carpeta: `{DIRS['backend'].relative_to(BASE).as_posix()}`\n\n"
+        "Ejecución: `pip install -r requirements.txt` y `uvicorn app.main:app --reload` (puerto 8000); pruebas: `pytest`.\n\n"
+        "## Archivos\n" + "\n".join(f"- `{p}`" for p in sorted(backend_files)) + "\n"
     )
     save(DIRS["informes"] / f"{backend.KEY}.md", backend_report)
 
@@ -407,7 +411,7 @@ def main():
     log.info("Inicia Frontend. Destino: %s", DIRS["frontend"])
     backend_sources = "\n\n".join(
         f"### {p}\n```python\n{c}```" for p, c in sorted(backend_files.items()) if p.endswith(".py"))
-    served = backend.served_routes(backend_files)
+    served = backend.runtime_routes(backend_files) or backend.served_routes(backend_files)
     served_list = "\n".join(f"- {m} {p}" for m, p in sorted(served, key=lambda r: (r[1], r[0])))
     log.info("Rutas expuestas por el Backend (%d):\n%s", len(served), served_list)
     frontend_context = (
