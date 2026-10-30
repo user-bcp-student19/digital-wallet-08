@@ -1,10 +1,12 @@
 """Orquestador CrewAI: Arquitecto -> Backend -> Frontend -> QA -> Chapter, con guardrails y HITL."""
 import logging
 import re
+import sys
 import time
 from pathlib import Path
 from crewai import Crew, Process
 from crewai.types.streaming import StreamChunkType
+from lab_copilot.runtime import set_progress_listener
 from crewai.events import crewai_event_bus
 from crewai.events.types.agent_events import AgentExecutionStartedEvent, AgentExecutionCompletedEvent, AgentExecutionErrorEvent
 from crewai.events.types.llm_events import LLMCallStartedEvent, LLMCallCompletedEvent, LLMCallFailedEvent
@@ -26,7 +28,8 @@ OUTPUT = BASE / "output"
 DIRS = {
     "arquitectura": OUTPUT / "arquitectura",
     "api": OUTPUT / "api",
-    "web": OUTPUT / "web",
+    "backend": OUTPUT / backend.OUTPUT_SUBDIR,
+    "frontend": OUTPUT / frontend.OUTPUT_SUBDIR,
     "qa": OUTPUT / "qa",
     "informes": BASE / "informes",
 }
@@ -38,12 +41,44 @@ for d in (OUTPUT, *DIRS.values()):
     d.mkdir(parents=True, exist_ok=True)
 
 LOG_FILE = OUTPUT / "ejecucion.log"
+
+
+class _Tee:
+    """Duplica todo lo que se imprime en consola (prints, streaming, tracebacks) en el archivo de log."""
+
+    def __init__(self, stream, file):
+        self._stream, self._file = stream, file
+
+    def write(self, text):
+        try:
+            self._stream.write(text)
+        except UnicodeEncodeError:
+            self._stream.write(text.encode("ascii", "replace").decode("ascii"))
+        self._stream.flush()
+        self._file.write(text)
+        self._file.flush()
+        return len(text)
+
+    def flush(self):
+        self._stream.flush()
+        self._file.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+if not isinstance(sys.stdout, _Tee):
+    for _s in (sys.stdout, sys.stderr):
+        if hasattr(_s, "reconfigure"):
+            _s.reconfigure(encoding="utf-8", errors="replace")
+    _log_file = open(LOG_FILE, "a", encoding="utf-8")
+    sys.stdout, sys.stderr = _Tee(sys.stdout, _log_file), _Tee(sys.stderr, _log_file)
+
 log = logging.getLogger("digital_wallet")
 if not log.handlers:
-    _fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
-    for _handler in (logging.StreamHandler(), logging.FileHandler(LOG_FILE, encoding="utf-8")):
-        _handler.setFormatter(_fmt)
-        log.addHandler(_handler)
+    _handler = logging.StreamHandler(sys.stdout)
+    _handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))
+    log.addHandler(_handler)
     log.setLevel(logging.INFO)
     log.propagate = False
 
@@ -54,6 +89,48 @@ _llm_started: dict = {}
 def _short(value, limit: int = 300) -> str:
     text = str(value).replace("\n", " ")
     return text if len(text) <= limit else text[:limit] + "..."
+
+
+_llm_progress = {"text": 0, "reasoning": 0, "next_report": 2000, "first_text": False, "first_reasoning": False}
+
+
+def _on_model_progress(kind: str, info: dict) -> None:
+    """Progreso en vivo del modelo Copilot: texto por consola y hitos en el log."""
+    p = _llm_progress
+    if kind == "start":
+        p.update(text=0, reasoning=0, next_report=2000, first_text=False, first_reasoning=False)
+        log.info("[LLM] Solicitud enviada a %s (prompt de %d caracteres). Esperando respuesta...",
+                 info["model"], info["prompt_chars"])
+    elif kind == "reasoning":
+        p["reasoning"] += len(info["delta"])
+        if not p["first_reasoning"]:
+            p["first_reasoning"] = True
+            log.info("[LLM] El modelo está razonando (%.1fs)...", info["elapsed"])
+    elif kind == "text":
+        if not p["first_text"]:
+            p["first_text"] = True
+            log.info("[LLM] Primer token recibido a los %.1fs. Generando respuesta...", info["elapsed"])
+        p["text"] += len(info["delta"])
+        print(info["delta"], end="", flush=True)
+        if p["text"] >= p["next_report"]:
+            log.info("[LLM] Generando... %d caracteres recibidos", p["text"])
+            p["next_report"] += 2000
+    elif kind == "wait":
+        state = "generando" if p["first_text"] else "razonando" if p["first_reasoning"] else "esperando al modelo"
+        log.info("[LLM] Sigue en curso (%.0fs, %s): razonamiento=%d car., texto=%d car.",
+                 info["elapsed"], state, p["reasoning"], p["text"])
+    elif kind == "tool":
+        log.info("[TOOL] El modelo ejecuta: %s", info["name"])
+    elif kind == "usage":
+        log.info("[LLM] Uso: entrada=%s tokens, salida=%s tokens, primer token=%ss",
+                 info.get("input_tokens"), info.get("output_tokens"), info.get("ttft"))
+    elif kind == "end":
+        log.info("[LLM] Respuesta completa: %d caracteres en %.1fs", info["chars"], info["elapsed"])
+    elif kind == "error":
+        log.error("[LLM] Error: %s", _short(info["message"]))
+
+
+set_progress_listener(_on_model_progress)
 
 
 @crewai_event_bus.on(TaskStartedEvent)
@@ -180,8 +257,8 @@ def make_task(module, feature: dict, context: str = "", guardrail=None):
     task.description += context
     task.guardrail = _logged_guardrail(guardrail or guard_task_output)
     if guardrail:
-        # Un guardrail específico (p. ej. Mermaid) reintenta hasta cumplirse, no solo 3 veces
-        task.guardrail_max_retries = GUARDRAIL_MAX_RETRIES
+        # Un guardrail específico reintenta hasta cumplirse; puede fijar su propio tope con .max_retries
+        task.guardrail_max_retries = getattr(guardrail, "max_retries", GUARDRAIL_MAX_RETRIES)
     return task
 
 
@@ -216,7 +293,7 @@ def run_with_hitl(module, feature: dict, context: str, max_attempts: int | None,
     while max_attempts is None or attempt <= max_attempts:
         text = execute(module.agent, make_task(module, feature, context + feedback, guardrail))
         log.info("%s: intento %d generado (%d caracteres)", module.LABEL, attempt, len(text))
-        print(f"\n===== OUTPUT: {module.LABEL} (intento {attempt}) =====\n{text[:3000]}\n")
+        print(f"\n===== OUTPUT: {module.LABEL} (intento {attempt}, {len(text)} caracteres) — texto completo mostrado arriba =====\n")
         choice = input("[s] aprobar  [r] reintentar con feedback  [n] abortar: ").strip().lower()
         log.info("%s: decisión humana '%s'", module.LABEL, choice or "(vacía)")
         if choice == "s":
@@ -305,28 +382,60 @@ def main():
         save(DIRS["arquitectura"] / name, content)
     save(DIRS["informes"] / f"{architect.KEY}.md", sections["INFORME"])
 
-    # 2. Backend: recibe solo los tres artefactos aprobados (HITL con máximo de intentos)
-    log.info("Inicia Backend (máximo %d intentos)", MAX_BACKEND_ATTEMPTS)
+    # 2. Backend: recibe architecture.mmd, sequence.mmd y openapi.yaml aprobados e implementa FastAPI en output/backend-python/api
+    log.info("Inicia Backend (máximo %d intentos). Destino: %s", MAX_BACKEND_ATTEMPTS, DIRS["backend"])
     backend_context = (
-        f"\n\n## Diagrama de arquitectura (Mermaid)\n```mermaid\n{arch_artifacts['architecture.mmd']}\n```"
-        f"\n\n## Diagrama de secuencia (Mermaid)\n```mermaid\n{arch_artifacts['sequence.mmd']}\n```"
-        f"\n\n## Contrato OpenAPI\n```yaml\n{arch_artifacts['openapi.yaml']}\n```"
+        f"\n\n## Diagrama de arquitectura (Mermaid) — architecture.mmd\n```mermaid\n{arch_artifacts['architecture.mmd']}\n```"
+        f"\n\n## Diagrama de secuencia (Mermaid) — sequence.mmd\n```mermaid\n{arch_artifacts['sequence.mmd']}\n```"
+        f"\n\n## Contrato OpenAPI del API local — openapi.yaml\n```yaml\n{arch_artifacts['openapi.yaml']}\n```"
+        f"\n\n## Contratos OpenAPI de servicios externos (client/openapi)\n{openapi}"
     )
-    backend_text = run_with_hitl(backend, feature, backend_context, max_attempts=MAX_BACKEND_ATTEMPTS)
-    save(DIRS["api"] / f"{backend.KEY}.md", backend_text)
-    save(DIRS["informes"] / f"{backend.KEY}.md", backend_text)
+    backend_text = run_with_hitl(backend, feature, backend_context, max_attempts=MAX_BACKEND_ATTEMPTS,
+                                 guardrail=backend.build_guardrail(arch_artifacts["openapi.yaml"]))
+    backend_files = backend.parse_files(backend_text)
+    for path in backend.write_files(backend_files, DIRS["backend"]):
+        log.info("Guardado: %s", path)
+    log.info("Backend: %d archivos escritos en %s", len(backend_files), DIRS["backend"])
+    backend_report = (
+        "# Informe Backend\n\nImplementación FastAPI generada a partir de architecture.mmd, sequence.mmd y openapi.yaml.\n\n"
+        f"Carpeta: `{DIRS['backend'].relative_to(BASE).as_posix()}`\n\n## Archivos\n"
+        + "\n".join(f"- `{p}`" for p in sorted(backend_files)) + "\n"
+    )
+    save(DIRS["informes"] / f"{backend.KEY}.md", backend_report)
 
-    # 3. Frontend
-    log.info("Inicia Frontend")
-    frontend_text = execute(frontend.agent, make_task(frontend, feature,
-                            f"\n\n## Endpoints implementados por el Backend\n{backend_text}"))
-    save(DIRS["web"] / f"{frontend.KEY}.md", frontend_text)
-    save(DIRS["informes"] / f"{frontend.KEY}.md", frontend_text)
+    # 3. Frontend: recibe architecture.mmd, sequence.mmd y el API Python del Backend; implementa Angular en output/frontend-angular/web
+    log.info("Inicia Frontend. Destino: %s", DIRS["frontend"])
+    backend_sources = "\n\n".join(
+        f"### {p}\n```python\n{c}```" for p, c in sorted(backend_files.items()) if p.endswith(".py"))
+    served = backend.served_routes(backend_files)
+    served_list = "\n".join(f"- {m} {p}" for m, p in sorted(served, key=lambda r: (r[1], r[0])))
+    log.info("Rutas expuestas por el Backend (%d):\n%s", len(served), served_list)
+    frontend_context = (
+        f"\n\n## Diagrama de arquitectura (Mermaid) — architecture.mmd\n```mermaid\n{arch_artifacts['architecture.mmd']}\n```"
+        f"\n\n## Diagrama de secuencia (Mermaid) — sequence.mmd\n```mermaid\n{arch_artifacts['sequence.mmd']}\n```"
+        f"\n\n## Rutas expuestas por el Backend (http://localhost:8000) — consúmelas todas\n{served_list}"
+        f"\n\n## Contrato OpenAPI del API Python — openapi.yaml\n```yaml\n{arch_artifacts['openapi.yaml']}\n```"
+        f"\n\n## Código del API Python generado por el Backend\n{backend_sources}"
+    )
+    frontend_text = execute(frontend.agent, make_task(frontend, feature, frontend_context,
+                            frontend.build_guardrail(arch_artifacts["openapi.yaml"], served)))
+    frontend_files = frontend.parse_files(frontend_text)
+    for path in frontend.write_files(frontend_files, DIRS["frontend"]):
+        log.info("Guardado: %s", path)
+    log.info("Frontend: %d archivos escritos en %s", len(frontend_files), DIRS["frontend"])
+    frontend_report = (
+        "# Informe Frontend\n\nAplicación Angular que consume el API Python del Backend, generada a partir de "
+        "architecture.mmd, sequence.mmd y openapi.yaml.\n\n"
+        f"Carpeta: `{DIRS['frontend'].relative_to(BASE).as_posix()}` (ejecutar con `npm install` y `npm start`)\n\n## Archivos\n"
+        + "\n".join(f"- `{p}`" for p in sorted(frontend_files)) + "\n"
+    )
+    save(DIRS["informes"] / f"{frontend.KEY}.md", frontend_report)
 
     # 4. QA
     log.info("Inicia QA")
     qa_text = execute(testing.agent, make_task(testing, feature,
-                      f"\n\n## Contrato y implementación del Backend\n{backend_text}"))
+                      f"\n\n## Contrato y implementación del Backend\n{backend_text}"
+                      f"\n\n## Archivos del Frontend Angular\n" + "\n".join(f"- {p}" for p in sorted(frontend_files))))
     save(DIRS["qa"] / f"{testing.KEY}.md", qa_text)
     save(DIRS["informes"] / f"{testing.KEY}.md", qa_text)
 
